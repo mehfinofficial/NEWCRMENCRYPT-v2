@@ -34,11 +34,33 @@ async function _pollTick() {
 }
 
 function localDateStr() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  // "Today" as the server sees it (Asia/Kolkata), not the device's own
+  // timezone — keeps new records/follow-ups dated the same day the
+  // server/dashboard consider "today", even if a phone is misconfigured
+  // or the user is travelling outside India.
+  return todayIST();
+}
+
+// Today's calendar date in Asia/Kolkata, as "YYYY-MM-DD", regardless of
+// the device's own timezone setting.
+function todayIST() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+}
+
+// Turns a "YYYY-MM-DD" calendar date into a UTC-anchored Date object.
+// Using Date.UTC (instead of `new Date(dateStr)`) makes day-difference
+// math exact — it sidesteps the JS quirk where date-only strings parse
+// as UTC midnight while `new Date()` + setHours(0,0,0,0) is local midnight,
+// which can silently shift a diff by up to a day.
+function dayDate(dateStr) {
+  if (!dateStr) return null;
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, (m || 1) - 1, d || 1));
+}
+
+// Whole-day difference between a "YYYY-MM-DD" date and today (IST).
+function daysFromToday(dateStr) {
+  return Math.round((dayDate(dateStr) - dayDate(todayIST())) / 86400000);
 }
 
 function _silentRefresh() {
@@ -152,10 +174,17 @@ function setUserInfo(username, userid) {
 }
 
 /* ---- THEME ---- */
+// Keep these in sync with --bg in css/main.css (light default + [data-theme="dark"])
+const THEME_COLORS = { light: '#f7f8fa', dark: '#080a0f' };
+
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   localStorage.setItem('crm_theme', theme);
   document.getElementById('themePill').classList.toggle('on', theme === 'dark');
+
+  // Sync the mobile status bar / browser chrome color to match.
+  const meta = document.getElementById('themeColorMeta');
+  if (meta) meta.setAttribute('content', THEME_COLORS[theme] || THEME_COLORS.light);
 }
 
 function toggleTheme() {
@@ -428,8 +457,7 @@ async function loadClients(search = '') {
 
 function clientIsActive(c) {
   if (!c.renewal_date) return true; // no renewal date = treat as active
-  const today = new Date(); today.setHours(0,0,0,0);
-  return new Date(c.renewal_date) >= today;
+  return daysFromToday(c.renewal_date) >= 0;
 }
 
 function renderClients(clients) {
@@ -467,9 +495,7 @@ function openClientDetail(c) {
   // Renewal pill colour logic
   let renewalPillHtml = '';
   if (c.renewal_date) {
-    const today = new Date(); today.setHours(0,0,0,0);
-    const rd    = new Date(c.renewal_date);
-    const diff  = Math.floor((rd - today) / 86400000);
+    const diff  = daysFromToday(c.renewal_date);
     let renewClass = 'cd-renewal--ok';
     if (diff < 0)   renewClass = 'cd-renewal--expired';
     else if (diff <= 30) renewClass = 'cd-renewal--soon';
@@ -995,8 +1021,7 @@ function openFollowupDetail(f) {
   /* ── Reminder urgency label ── */
   function urgencyLabel(dateStr) {
     if (!dateStr) return null;
-    const today = new Date(); today.setHours(0,0,0,0);
-    const diff  = Math.floor((new Date(dateStr) - today) / 86400000);
+    const diff  = daysFromToday(dateStr);
     if (diff < 0)   return 'Overdue';
     if (diff === 0) return 'Today';
     if (diff === 1) return 'Tomorrow';
@@ -1193,9 +1218,7 @@ function badgeHtml(status) {
 
 function getRecordStatus(r) {
   if (!r.renewaldate) return 'active';
-  const today = new Date(); today.setHours(0,0,0,0);
-  const renewal = new Date(r.renewaldate);
-  const diff = Math.floor((renewal - today) / 86400000);
+  const diff = daysFromToday(r.renewaldate);
   if (diff < 0) return 'expired';
   if (diff <= 15) return 'expiring';
   return 'active';

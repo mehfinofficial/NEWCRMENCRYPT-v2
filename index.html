@@ -6,8 +6,7 @@
   <title>Xetel</title>
   <link rel="icon" type="image/png" href="assests/logo/favicon.png">
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
- <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" id="themeColorMeta" content="#f7f8fa">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -190,36 +189,6 @@
             <div class="chart-bar-skeleton"></div>
             <div class="chart-bar-skeleton"></div>
           </div>
-        </div>
-
-        <!-- Quick Actions -->
-        <div class="quick-actions">
-          <button class="qa-btn" onclick="openModal('addRecordModal'); populateClientSelect(); populateServiceSelect();">
-            <div class="qa-icon">
-              <!-- File + plus badge -->
-<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-file-plus"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M14 3v4a1 1 0 0 0 1 1h4" /><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /><path d="M12 11l0 6" /><path d="M9 14l6 0" /></svg>
-            </div>
-            <span class="qa-label">Add New Record</span>
-          </button>
-          <button class="qa-btn" onclick="openModal('addFollowupModal'); populateFollowupClientSelect();">
-            <div class="qa-icon">
-              <!-- Calendar with plus -->
-<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-phone-plus"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M5 4h4l2 5l-2.5 1.5a11 11 0 0 0 5 5l1.5 -2.5l5 2v4a2 2 0 0 1 -2 2a16 16 0 0 1 -15 -15a2 2 0 0 1 2 -2" /><path d="M15 6h6m-3 -3v6" /></svg>
-            </div>
-            <span class="qa-label">Add New Follow Up</span>
-          </button>
-          <button class="qa-btn" onclick="navigate('clients')">
-            <div class="qa-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            </div>
-            <span class="qa-label">Client Ledger</span>
-          </button>
-          <button class="qa-btn" onclick="navigate('records'); setTimeout(()=>{ recordFilter='pending'; const allChips=document.querySelectorAll('#recordFilters .chip'); allChips.forEach(c=>c.classList.remove('active')); const btn=document.querySelector('#page-records .chip[data-filter=pending]'); if(btn){ btn.classList.add('active');} loadRecords(''); },200)">
-            <div class="qa-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            </div>
-            <span class="qa-label">Pending Records</span>
-          </button>
         </div>
 
         <!-- Month Summary -->
