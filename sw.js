@@ -6,7 +6,14 @@
      • Everything else → Network First
    ============================================= */
 
-const CACHE_NAME   = 'xetel-crm-v21';
+// ── DEV / LIVE SWITCH ─────────────────────────────────────────────────
+// true  = dev mode: caching is fully bypassed, every file always comes
+//         fresh from the network, no version bumping needed while building.
+// false = live mode: normal caching as described above.
+// Flip this to false AND bump CACHE_NAME below before deploying live.
+const DEV_MODE = true;
+
+const CACHE_NAME   = 'xetel-crm-v24';
 const SHELL_ASSETS = [
   './',
   './index.html',
@@ -17,8 +24,9 @@ const SHELL_ASSETS = [
   './assests/logo/icon-512.png',
 ];
 
-/* ── INSTALL: cache the app shell ── */
+/* ── INSTALL: cache the app shell (skipped in dev mode) ── */
 self.addEventListener('install', event => {
+  if (DEV_MODE) { self.skipWaiting(); return; }
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(SHELL_ASSETS))
@@ -26,13 +34,13 @@ self.addEventListener('install', event => {
   );
 });
 
-/* ── ACTIVATE: delete old caches ── */
+/* ── ACTIVATE: delete old caches (deletes ALL caches in dev mode) ── */
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
         keys
-          .filter(k => k !== CACHE_NAME)
+          .filter(k => DEV_MODE || k !== CACHE_NAME)
           .map(k => caches.delete(k))
       )
     ).then(() => self.clients.claim())
@@ -46,6 +54,9 @@ self.addEventListener('fetch', event => {
   // Skip non-GET and browser-extension requests
   if (event.request.method !== 'GET') return;
   if (!url.protocol.startsWith('http')) return;
+
+  // Dev mode: always go straight to the network, never touch the cache.
+  if (DEV_MODE) return;
 
   // API calls → Network First (fresh data), fall back to cache
   if (url.pathname.includes('/api/')) {
