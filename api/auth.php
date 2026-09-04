@@ -41,8 +41,8 @@ if ($action === 'check') {
 
     $token = $_COOKIE['crm_remember'] ?? '';
     if ($token) {
-        $stmt = $pdo->prepare("SELECT uid, username FROM users WHERE remember_token = ? AND token_expires > datetime('now') LIMIT 1");
-        $stmt->execute([$token]);
+        $stmt = $pdo->prepare("SELECT uid, username FROM users WHERE remember_token = ? AND token_expires > ? LIMIT 1");
+        $stmt->execute([$token, date('Y-m-d H:i:s')]);
         $user = $stmt->fetch();
         if ($user) {
             $_SESSION['userid']   = $user['uid'];
@@ -111,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'login') {
 
     if (!$user) {
         // Record attempt even for unknown usernames (prevents username enumeration)
-        $pdo->prepare("INSERT INTO login_attempts (username, ip) VALUES (?, ?)")->execute([$username, $ip]);
+        $pdo->prepare("INSERT INTO login_attempts (username, ip, attempted_at) VALUES (?, ?, ?)")->execute([$username, $ip, date('Y-m-d H:i:s')]);
         jsonOut(['success' => false, 'error' => 'Invalid username or password.'], 401);
     }
 
@@ -127,7 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'login') {
 
     if (!$valid) {
         // Record this failed attempt
-        $pdo->prepare("INSERT INTO login_attempts (username, ip) VALUES (?, ?)")->execute([$username, $ip]);
+        $pdo->prepare("INSERT INTO login_attempts (username, ip, attempted_at) VALUES (?, ?, ?)")->execute([$username, $ip, date('Y-m-d H:i:s')]);
 
         // Tell user how many tries remain
         $remaining = $maxAttempts - ($attempts + 1);

@@ -113,10 +113,10 @@ if ($method === 'POST') {
         $stmt = $pdo->prepare("
             INSERT INTO clients
                 (clientname, firmname, address, contact, email, whatsapp,
-                 system_id, status, renewal_date, software_type, software_version)
+                 system_id, status, renewal_date, software_type, software_version, created_at)
             VALUES
                 (:clientname, :firmname, :address, :contact, :email, :whatsapp,
-                 :system_id, :status, :renewal_date, :software_type, :software_version)
+                 :system_id, :status, :renewal_date, :software_type, :software_version, :created_at)
         ");
         $stmt->execute([
             ':clientname'        => $body['clientname']        ?? '',
@@ -130,6 +130,7 @@ if ($method === 'POST') {
             ':renewal_date'      => $body['renewal_date']      ?? null,
             ':software_type'     => $body['software_type']     ?? null,
             ':software_version'  => $body['software_version']  ?? null,
+            ':created_at'        => date('Y-m-d H:i:s'),
         ]);
         logAction($pdo, "New client added: " . ($body['firmname'] ?? $body['clientname'] ?? ''));
         jsonOut(['success' => true, 'id' => $pdo->lastInsertId()]);

@@ -34,8 +34,8 @@ function requireAuth(PDO $pdo): void {
         // Try remember-me cookie before giving up
         $token = $_COOKIE['crm_remember'] ?? '';
         if ($token) {
-            $stmt = $pdo->prepare("SELECT uid, username FROM users WHERE remember_token = ? AND token_expires > datetime('now') LIMIT 1");
-            $stmt->execute([$token]);
+            $stmt = $pdo->prepare("SELECT uid, username FROM users WHERE remember_token = ? AND token_expires > ? LIMIT 1");
+            $stmt->execute([$token, date('Y-m-d H:i:s')]);
             $user = $stmt->fetch();
             if ($user) {
                 $_SESSION['userid']   = $user['uid'];
@@ -90,8 +90,8 @@ function logAction(PDO $pdo, string $message): void {
         if (session_status() === PHP_SESSION_NONE) session_start();
         $user = $_SESSION['username'] ?? $_SESSION['user'] ?? 'unknown';
 
-        $stmt = $pdo->prepare("INSERT INTO logs (message, user) VALUES (?, ?)");
-        $stmt->execute([$message, $user]);
+        $stmt = $pdo->prepare("INSERT INTO logs (message, user, created_at) VALUES (?, ?, ?)");
+        $stmt->execute([$message, $user, date('Y-m-d H:i:s')]);
 
         // Every log = a write action, so bump sync timestamp too
         bumpSync($pdo);

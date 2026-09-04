@@ -13,8 +13,8 @@ if (empty($_SESSION['userid'])) {
     // Try remember-me cookie
     $token = $_COOKIE['crm_remember'] ?? '';
     if ($token) {
-        $stmt = $pdo->prepare("SELECT uid, username FROM users WHERE remember_token = ? AND token_expires > datetime('now') LIMIT 1");
-        $stmt->execute([$token]);
+        $stmt = $pdo->prepare("SELECT uid, username FROM users WHERE remember_token = ? AND token_expires > ? LIMIT 1");
+        $stmt->execute([$token, date('Y-m-d H:i:s')]);
         $user = $stmt->fetch();
         if ($user) {
             $_SESSION['userid']   = $user['uid'];
