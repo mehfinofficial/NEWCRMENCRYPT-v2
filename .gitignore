@@ -1,0 +1,6 @@
+data/crm.sqlite
+data/crm.rar
+data/encryption.key
+*.rar
+*.sqlite
+*.sqlite3

@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Xetel</title>
+  <link rel="icon" type="image/png" href="assests/logo/favicon.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+ <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: dark)">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Xetel CRM">
+  <link rel="apple-touch-icon" sizes="192x192" href="assests/logo/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/main.css" />
+  <style>
+    .log-content { display: flex; flex-direction: column; gap: 3px; }
+    .log-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .log-time { font-size: 11px; color: var(--text-muted); }
+    .log-user {
+      display: inline-flex; align-items: center;
+      font-size: 11px; font-weight: 600;
+      color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 12%, transparent);
+      padding: 1px 7px; border-radius: 20px;
+    }
+  </style>
+
+
+</head>
+<body>
+
+  <!-- ====== LOGIN SCREEN (SPA) ====== -->
+  <div class="login-screen" id="loginScreen">
+    <div class="login-bg">
+      <svg class="login-grid-svg" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
+        <defs>
+          <pattern id="squaregrid" x="0" y="0" width="22" height="22" patternUnits="userSpaceOnUse">
+            <path d="M 22 0 L 0 0 0 22" fill="none" stroke="rgb(0, 113, 227)" stroke-width="0.5" opacity="0.20"/>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#squaregrid)"/>
+      </svg>
+      <div class="login-grid-fade"></div>
+    </div>
+    <div class="login-card" id="loginCard">
+      <!-- Theme toggle -->
+      <button class="login-theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">
+        <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </button>
+      <!-- Brand -->
+      <div class="login-brand">
+        <img src="assests/logo/favicon.png" alt="Xetel" onerror="this.style.display='none'" />
+        <span class="login-brand-name">Xetel CRM</span>
+      </div>
+      <!-- Secure badge -->
+      <div class="login-badge">
+        <div class="login-badge-dot"></div>
+        Secure login
+      </div>
+      <div class="login-heading">Welcome back</div>
+      <div class="login-sub">Sign in to your account to continue</div>
+      <!-- Error -->
+      <div class="login-error" id="loginError">
+        <span id="loginErrorText">Invalid credentials</span>
+      </div>
+      <!-- Username -->
+      <div class="login-field">
+        <label class="login-label" for="loginUsername">Username</label>
+        <div class="login-input-wrap">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <input type="text" id="loginUsername" class="login-input" placeholder="Enter your username" autocomplete="username" autocapitalize="none" />
+        </div>
+      </div>
+      <!-- Password -->
+      <div class="login-field">
+        <label class="login-label" for="loginPassword">Password</label>
+        <div class="login-input-wrap">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <input type="password" id="loginPassword" class="login-input" placeholder="Enter your password" autocomplete="current-password" />
+          <button class="login-eye-btn" id="loginEyeBtn" onclick="loginTogglePassword()" type="button">
+            <svg id="loginEyeOpen" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg id="loginEyeClosed" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+          </button>
+        </div>
+      </div>
+      <!-- Remember me -->
+      <div class="login-remember">
+        <input type="checkbox" id="loginRemember" />
+        <label for="loginRemember" class="login-remember-label">
+          Keep me logged in
+        </label>
+      </div>
+      <!-- Submit -->
+      <button class="login-btn" id="loginBtn" onclick="doLogin()">
+        <span class="login-btn-text">Sign In</span>
+        <div class="login-spinner"></div>
+      </button>
+      <div class="login-footer">Powered by Xetel &nbsp;·&nbsp; All rights reserved</div>
+    </div>
+  </div>
+
+
+  <!-- SPLASH SCREEN -->
+  <div class="splash" id="splashScreen">
+    <div class="splash__content">
+      <img src="assests/logo/Xetellogo1.png" alt="Xetel" class="splash__logo-full splash__logo-full--light" />
+      <img src="assests/logo/Xetellogo2.png" alt="Xetel" class="splash__logo-full splash__logo-full--dark" />
+      <div class="splash__bar"><div class="splash__bar-fill" id="splashBarFill"></div></div>
+    </div>
+  </div>
+
+  <!-- TOP HEADER -->
+  <header class="top-bar" id="topBar">
+    <div class="top-bar__left">
+      <img src="assests/logo/Xetellogo1.png" alt="Xetel" class="logo-img logo-light" />
+      <img src="assests/logo/Xetellogo2.png" alt="Xetel" class="logo-img logo-dark" />
+      <span class="top-bar__title" id="pageTitle">Dashboard</span>
+    </div>
+    <div class="top-bar__right">
+      <!-- Bell icon -->
+      <button class="bell-btn" id="bellBtn" aria-label="Notifications">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      </button>
+      <!-- Profile button — icon only -->
+      <button class="profile-btn" id="profileBtn" onclick="toggleProfileMenu()">
+        <div class="avatar" id="userAvatar">A</div>
+      </button>
+
+      <!-- Profile dropdown -->
+      <div class="profile-menu" id="profileMenu">
+         <div class="profile-menu__header">
+          <div class="pm-avatar" id="pmAvatar">A</div>
+          <div>
+            <div class="pm-name" id="pmName">Admin</div>
+            <div class="pm-id" id="pmId">#001</div>
+          </div>
+        </div>
+        <div class="profile-menu__divider"></div>
+        <div class="profile-menu__row">
+          <span>Dark Mode</span>
+          <button class="theme-pill" id="themePill" onclick="toggleTheme()">
+            <span class="theme-pill__thumb" id="pillThumb"></span>
+          </button>
+        </div>
+        <div class="profile-menu__divider"></div>
+        <button class="pm-logout" id="pwaInstallBtn" onclick="triggerPWAInstall()" style="display:none;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Install App
+        </button>
+        <div class="profile-menu__divider" id="pwaInstallDivider" style="display:none;"></div>
+        <button class="pm-logout" onclick="doLogout()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          Log Out
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN CONTENT -->
+  <main class="main-content" id="mainContent">
+
+    <!-- DASHBOARD -->
+    <section class="page active" id="page-dashboard">
+      <div class="page-scroll">
+
+        <!-- Greeting -->
+        <div class="greeting-card">
+          <h2 class="greeting-name" id="greetingName">Loading...</h2>
+          <p class="greeting-date" id="greetingDate"></p>
+        </div>
+
+        <!-- Bar Chart Card -->
+        <div class="chart-card">
+          <div class="chart-card__header">
+            <span class="chart-card__title">Records This Week</span>
+            <span class="chart-card__badge" id="chartTotal">—</span>
+          </div>
+          <div class="chart-bars" id="chartBars">
+            <!-- bars rendered by JS -->
+            <div class="chart-bar-skeleton"></div>
+            <div class="chart-bar-skeleton"></div>
+            <div class="chart-bar-skeleton"></div>
+            <div class="chart-bar-skeleton"></div>
+            <div class="chart-bar-skeleton"></div>
+            <div class="chart-bar-skeleton"></div>
+            <div class="chart-bar-skeleton"></div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+          <button class="qa-btn" onclick="openModal('addRecordModal'); populateClientSelect(); populateServiceSelect();">
+            <div class="qa-icon">
+              <!-- File + plus badge -->
+<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-file-plus"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M14 3v4a1 1 0 0 0 1 1h4" /><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2" /><path d="M12 11l0 6" /><path d="M9 14l6 0" /></svg>
+            </div>
+            <span class="qa-label">Add New Record</span>
+          </button>
+          <button class="qa-btn" onclick="openModal('addFollowupModal'); populateFollowupClientSelect();">
+            <div class="qa-icon">
+              <!-- Calendar with plus -->
+<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-phone-plus"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M5 4h4l2 5l-2.5 1.5a11 11 0 0 0 5 5l1.5 -2.5l5 2v4a2 2 0 0 1 -2 2a16 16 0 0 1 -15 -15a2 2 0 0 1 2 -2" /><path d="M15 6h6m-3 -3v6" /></svg>
+            </div>
+            <span class="qa-label">Add New Follow Up</span>
+          </button>
+          <button class="qa-btn" onclick="navigate('clients')">
+            <div class="qa-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <span class="qa-label">Client Ledger</span>
+          </button>
+          <button class="qa-btn" onclick="navigate('records'); setTimeout(()=>{ recordFilter='pending'; const allChips=document.querySelectorAll('#recordFilters .chip'); allChips.forEach(c=>c.classList.remove('active')); const btn=document.querySelector('#page-records .chip[data-filter=pending]'); if(btn){ btn.classList.add('active');} loadRecords(''); },200)">
+            <div class="qa-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <span class="qa-label">Pending Records</span>
+          </button>
+        </div>
+
+        <!-- Month Summary -->
+        <div style="display: none;" class="month-summary" id="monthSummary">
+          <div class="month-summary__title" id="monthSummaryTitle">This Month</div>
+          <div class="month-summary__row">
+            <div class="month-summary__item">
+              <div class="month-summary__num" id="ms_clients">—</div>
+              <div class="month-summary__lbl">New Clients</div>
+            </div>
+            <div class="month-summary__divider"></div>
+            <div class="month-summary__item">
+              <div class="month-summary__num" id="ms_renewals">—</div>
+              <div class="month-summary__lbl">Renewals</div>
+            </div>
+            <div class="month-summary__divider"></div>
+            <div class="month-summary__item">
+              <div class="month-summary__num month-summary__num--warn" id="ms_expiring">—</div>
+              <div class="month-summary__lbl">Expiring</div>
+            </div>
+          </div>
+          <div class="month-summary__bar-wrap">
+            <div class="month-summary__bar-track">
+              <div class="month-summary__bar-fill" id="ms_barFill" style="width:0%"></div>
+            </div>
+            <div class="month-summary__bar-labels">
+              <span>Renewal rate</span>
+              <span class="month-summary__bar-pct" id="ms_barPct">—</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stat Pills -->
+        <div style="display: none;" class="stat-pills" id="statPills">
+          <div class="stat-pill skeleton-pill"></div>
+          <div class="stat-pill skeleton-pill"></div>
+          <div class="stat-pill skeleton-pill"></div>
+          <div class="stat-pill skeleton-pill"></div>
+        </div>
+
+
+
+        <!-- RIGHT PANEL -->
+        <div class="dash-right-panel">
+
+          <!-- Upcoming Renewals -->
+          <div class="section-header">
+            <h3 class="section-title">Upcoming Renewals</h3>
+            <button class="text-btn" onclick="navigate('records')">View All</button>
+          </div>
+          <div class="card-list" id="upcomingRenewals">
+            <div class="empty-state">Loading...</div>
+          </div>
+
+          <!-- Follow-up Today -->
+          <div class="section-header">
+            <h3 class="section-title">Follow-up Today</h3>
+            <button class="text-btn" onclick="navigate('followups')">View All</button>
+          </div>
+          <div class="card-list" id="followupToday">
+            <div class="empty-state">Loading...</div>
+          </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <!-- CLIENTS -->
+    <section class="page" id="page-clients">
+      <div class="page-scroll">
+        <div class="search-bar-wrap">
+          <div class="search-bar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="clientSearch" placeholder="Search clients..." />
+            <button type="button" class="search-clear" onclick="clearSearch('clientSearch')" aria-label="Clear search">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="card-list" id="clientsList">
+          <div class="empty-state">Loading clients...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RECORDS -->
+    <section class="page" id="page-records">
+      <div class="page-scroll">
+        <div class="search-bar-wrap">
+          <div class="search-bar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="recordSearch" placeholder="Search records..." />
+            <button type="button" class="search-clear" onclick="clearSearch('recordSearch')" aria-label="Clear search">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="filter-chips" id="recordFilters">
+          <button class="chip active" data-filter="all">All</button>
+          <button class="chip" data-filter="pending">Pending</button>
+          <button class="chip" data-filter="done">Complete</button>
+          <button class="chip chip--date" data-filter="date" id="datePickerChip" onclick="openDatePicker()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <span id="dateChipLabel">Filter by Date</span>
+          </button>
+          <input type="date" id="recordDateInput" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;" onchange="applyDateFilter(this.value)" />
+        </div>
+        <div class="card-list" id="recordsList">
+          <div class="empty-state">Loading records...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FOLLOW-UPS -->
+    <section class="page" id="page-followups">
+      <div class="page-scroll">
+        <div class="search-bar-wrap">
+          <div class="search-bar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="followupSearch" placeholder="Search follow-ups..." />
+            <button type="button" class="search-clear" onclick="clearSearch('followupSearch')" aria-label="Clear search">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="filter-chips">
+          <button class="chip active" data-filter="all"     onclick="filterFollowups('all',this)">All</button>
+          <button class="chip"        data-filter="pending" onclick="filterFollowups('pending',this)">Pending</button>
+          <button class="chip"        data-filter="done"    onclick="filterFollowups('done',this)">Complete</button>
+          <button class="chip"        data-filter="leads"   onclick="filterFollowups('leads',this)">New Installation</button>
+        </div>
+        <div class="card-list" id="followupsList">
+          <div class="empty-state">Loading follow-ups...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- LOGS -->
+    <section class="page" id="page-logs">
+      <div class="page-scroll">
+        <div class="section-header" style="margin-top:0">
+          <h3 class="section-title">Activity Logs</h3>
+        </div>
+        <div class="card-list" id="logsList">
+          <div class="empty-state">Loading logs...</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- BOTTOM NAV -->
+  <nav class="bottom-nav" id="bottomNav">
+    <button class="nav-item active" data-page="dashboard" onclick="navigate('dashboard')">
+      <div class="nav-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      </div>
+      <span>Dashboard</span>
+    </button>
+    <button class="nav-item" data-page="clients" onclick="navigate('clients')">
+      <div class="nav-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </div>
+      <span>Clients</span>
+    </button>
+    <button class="nav-item" data-page="records" onclick="navigate('records')">
+      <div class="nav-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10,9 9,9 8,9"/></svg>
+      </div>
+      <span>Records</span>
+    </button>
+    <button class="nav-item" data-page="followups" onclick="navigate('followups')">
+      <div class="nav-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12 19.79 19.79 0 0 1 1.93 3.4 2 2 0 0 1 3.92 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9a16 16 0 0 0 6.91 6.91l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 23 17z"/></svg>
+      </div>
+      <span>Follow-ups</span>
+    </button>
+    <button class="nav-item" data-page="logs" onclick="navigate('logs')">
+      <div class="nav-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      </div>
+      <span>Logs</span>
+    </button>
+  </nav>
+
+  <!-- ====== MODALS ====== -->
+
+  <!-- ADD CLIENT -->
+  <div class="modal-overlay" id="addClientModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>New Client</h3>
+        <button class="icon-btn" onclick="closeModal('addClientModal')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        
+        <div class="form-group"><label>Firm Name *</label><input type="text" id="c_firm" placeholder="Company / firm" /></div>
+        <div class="form-group"><label>Address</label><textarea id="c_address" placeholder="Full address" rows="2"></textarea></div>
+        <div class="form-group"><label>Client Name *</label><input type="text" id="c_name" placeholder="Full name" /></div>
+        <div class="form-group"><label>Contact *</label><input type="tel" id="c_contact" placeholder="+91 XXXXX XXXXX" /></div>
+        <div class="form-group"><label>Email</label><input type="email" id="c_email" placeholder="email@example.com" /></div>
+        <div class="form-group"><label>WhatsApp</label><input type="tel" id="c_whatsapp" placeholder="+91 XXXXX XXXXX" value="+91" /></div>
+        <div class="form-group"><label>Renewal Date</label><input type="date" id="c_renewal_date" /></div>
+        <div class="form-group"><label>System ID</label><input type="text" id="c_system_id" placeholder="e.g. CLT-0001" /></div>
+        <div class="form-group"><label>Software Type</label>
+          <select id="c_software_type">
+            <option value="">Select software...</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Software Version</label><input type="text" id="c_software_version" placeholder="e.g. 3.0.1, Silver, Gold" /></div>
+        <div class="form-group"><label>Status</label><select id="c_status"><option value="1">Active</option><option value="0">Inactive</option></select></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal('addClientModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveClient()">Save Client</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD RECORD -->
+  <div class="modal-overlay" id="addRecordModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>New Record</h3>
+        <button class="icon-btn" onclick="closeModal('addRecordModal')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <!-- Status toggle at top -->
+        <div class="form-group" style="flex-direction:row;align-items:center;justify-content:space-between;display:flex;">
+          <label style="margin:0;font-weight:600;">Status</label>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span id="r_status_label" style="font-size:13px;color:var(--text-secondary);font-weight:500;">Pending</span>
+            <div id="r_status_toggle" onclick="toggleRecordStatus()" style="width:44px;height:24px;border-radius:12px;background:var(--border);cursor:pointer;position:relative;transition:background 0.2s;flex-shrink:0;">
+              <div id="r_status_thumb" style="width:20px;height:20px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px;transition:transform 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2);"></div>
+            </div>
+          </div>
+          <select id="r_status" style="display:none;">
+            <option value="pending">Pending</option>
+            <option value="done">Done</option>
+          </select>
+        </div>
+        <!-- Always shown -->
+        <div class="form-group" style="position:relative;"><label>Account (Client) *</label>
+          <input type="text" id="r_account_search" placeholder="Type client or firm name..." autocomplete="off"
+                 oninput="filterClientSuggestions()" onfocus="filterClientSuggestions()" />
+          <input type="hidden" id="r_account" />
+          <div id="r_account_suggestions" class="autocomplete-list"></div>
+        </div>
+        <div class="form-group"><label>Service *</label>
+          <select id="r_service" onchange="onServiceSelect()"><option value="">Select service...</option></select>
+        </div>
+        <div class="form-group"><label>Transaction Date *</label><input type="date" id="r_transdate" /></div>
+
+        <!-- Support / Visit fields -->
+        <div id="r_grp_support" style="display:none;flex-direction:column;gap:12px;">
+          <div class="form-group"><label>Query</label>
+            <input type="text" id="r_query" placeholder="Brief description of the issue..." />
+          </div>
+          <div class="form-group"><label>Note</label>
+            <textarea id="r_query_note" rows="3" placeholder="Additional details..." style="resize:vertical;font-family:inherit;font-size:14px;padding:10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text-primary);width:100%;box-sizing:border-box;"></textarea>
+          </div>
+        </div>
+
+        <!-- Renewal fields -->
+        <div id="r_grp_renewal" style="display:none;flex-direction:column;gap:12px;">
+          <div class="form-group"><label>Renewal Date</label><input type="date" id="r_renewal_date" /></div>
+          <div class="form-group"><label>Payment Info</label><input type="text" id="r_payment_info" placeholder="e.g. UPI, Cash, Cheque #1234" /></div>
+          <div class="form-group"><label>Next Renewal Date</label><input type="date" id="r_next_renewal" /></div>
+          <div class="form-group"><label>Note</label>
+            <textarea id="r_renewal_note" rows="2" placeholder="Optional note..." style="resize:vertical;font-family:inherit;font-size:14px;padding:10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text-primary);width:100%;box-sizing:border-box;"></textarea>
+          </div>
+        </div>
+
+        <!-- System Change fields -->
+        <div id="r_grp_syschange" style="display:none;flex-direction:column;gap:12px;">
+          <div class="form-group"><label>Current System ID</label><input type="text" id="r_systemid" placeholder="Prefilled from client" readonly /></div>
+          <div class="form-group"><label>New System ID</label><input type="text" id="r_new_systemid" placeholder="Enter new system ID" /></div>
+          <div class="form-group"><label>Note</label>
+            <textarea id="r_syschange_note" rows="2" placeholder="Optional note..." style="resize:vertical;font-family:inherit;font-size:14px;padding:10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text-primary);width:100%;box-sizing:border-box;"></textarea>
+          </div>
+        </div>
+
+        <!-- New Installation fields -->
+        <div id="r_grp_install" style="display:none;flex-direction:column;gap:12px;">
+          <div class="form-group"><label>Note</label>
+            <textarea id="r_install_note" rows="2" placeholder="Installation details..." style="resize:vertical;font-family:inherit;font-size:14px;padding:10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text-primary);width:100%;box-sizing:border-box;"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal('addRecordModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveRecord()">Save Record</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD FOLLOWUP -->
+  <div class="modal-overlay" id="addFollowupModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>New Follow-up</h3>
+        <button class="icon-btn" onclick="closeModal('addFollowupModal')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+
+        <!-- Type toggle tabs -->
+        <div class="f-type-tabs">
+          <button class="f-type-tab" id="f_tab_new" onclick="onFollowupTypeToggle('new')">New</button>
+          <button class="f-type-tab" id="f_tab_client" onclick="onFollowupTypeToggle('client')">Client</button>
+        </div>
+
+        <!-- NEW group -->
+        <div id="f_grp_new" style="display:flex;flex-direction:column;gap:12px;">
+          <div class="form-group"><label>Phone Number *</label><input type="tel" id="f_phone_new" placeholder="+91 XXXXX XXXXX" /></div>
+          <div class="form-group"><label>Note</label><textarea id="f_note_new" rows="2" placeholder="What's this follow-up about?" style="resize:vertical;font-family:inherit;font-size:14px;padding:10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text-primary);width:100%;box-sizing:border-box;"></textarea></div>
+        </div>
+
+        <!-- CLIENT group -->
+        <div id="f_grp_client" style="display:none;flex-direction:column;gap:12px;">
+          <div class="form-group"><label>Client *</label>
+            <select id="f_client" onchange="onFollowupClientSelect()"><option value="">Select client...</option></select>
+          </div>
+          <div class="form-group"><label>Phone Number *</label><input type="tel" id="f_phone" placeholder="Auto-filled from client" /></div>
+          <div class="form-group"><label>Note</label><textarea id="f_note_client" rows="2" placeholder="What's this follow-up about?" style="resize:vertical;font-family:inherit;font-size:14px;padding:10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text-primary);width:100%;box-sizing:border-box;"></textarea></div>
+        </div>
+
+        <!-- Common fields -->
+        <div class="form-group"><label>Reminder Date *</label><input type="date" id="f_date" /></div>
+        <div class="form-group"><label>Status</label>
+          <select id="f_status">
+            <option value="pending">Pending</option>
+            <option value="done">Complete</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+
+        <!-- Lead checkbox -->
+        <div class="form-group" style="flex-direction:row;align-items:center;gap:10px;">
+          <input type="checkbox" id="f_is_lead" style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer;" />
+          <label for="f_is_lead" style="margin:0;cursor:pointer;font-weight:500;">Mark as Lead</label>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal('addFollowupModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveFollowup()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW CLIENT DETAIL -->
+  <div class="modal-overlay" id="clientDetailModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Client Details</h3>
+        <button class="icon-btn" onclick="closeModal('clientDetailModal')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="clientDetailBody"></div>
+      <div class="modal-footer" style="display:flex;gap:8px;">
+        <a id="cdCallBtn" class="btn btn-ghost" href="#" style="flex:1;text-align:center;text-decoration: none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:5px;vertical-align:middle"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12 19.79 19.79 0 0 1 1.93 3.4 2 2 0 0 1 3.92 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9a16 16 0 0 0 6.91 6.91l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 23 17z"/></svg>Call
+        </a>
+        <a id="cdChatBtn" class="btn btn-primary" href="#" target="_blank" style="flex:1;text-align:center;text-decoration: none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="margin-right:5px;vertical-align:middle"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.025.507 3.934 1.397 5.61L0 24l6.545-1.38A11.946 11.946 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.8 9.8 0 0 1-5.003-1.367l-.36-.214-3.713.983.993-3.648-.235-.374A9.817 9.817 0 0 1 2.182 12C2.182 6.578 6.578 2.182 12 2.182S21.818 6.578 21.818 12 17.422 21.818 12 21.818z"/></svg>Chat
+        </a>
+        <button class="btn btn-ghost" onclick="closeModal('clientDetailModal')" style="flex:1;">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FLOATING ADD CLIENT PILL — direct body child for correct fixed positioning -->
+  <div class="add-client-pill" id="addClientPill" onclick="openModal('addClientModal'); populateSoftwareTypes();">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0"/><path d="M16 19h6"/><path d="M19 16v6"/><path d="M6 21v-2a4 4 0 0 1 4 -4h4"/></svg>
+    <span>Add New Client</span>
+  </div>
+
+  <!-- FLOATING ADD RECORD PILL -->
+  <div class="add-client-pill" id="addRecordPill" onclick="openModal('addRecordModal'); populateClientSelect(); populateServiceSelect();">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2"/><path d="M12 11l0 6"/><path d="M9 14l6 0"/></svg>
+    <span>Add New Record</span>
+  </div>
+
+  <!-- FLOATING ADD FOLLOWUP PILL -->
+  <div class="add-client-pill" id="addFollowupPill" onclick="openModal('addFollowupModal'); populateFollowupClientSelect();">
+   <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-phone-plus"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M5 4h4l2 5l-2.5 1.5a11 11 0 0 0 5 5l1.5 -2.5l5 2v4a2 2 0 0 1 -2 2a16 16 0 0 1 -15 -15a2 2 0 0 1 2 -2" /><path d="M15 6h6m-3 -3v6" /></svg>
+    <span>Add Follow-up</span>
+  </div>
+
+
+  <!-- TOAST -->
+  <div class="toast" id="toast"></div>
+
+
+
+    <!-- VIEW RECORD MODAL -->
+<div class="modal-overlay" id="recordDetailModal">
+  <div class="modal modal--record-detail">
+    <div class="modal-header">
+      <h3 id="rdm-title">Record Details</h3>
+      <button class="icon-btn" onclick="closeModal('recordDetailModal')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="rdm-body">
+      <!-- dynamically populated by openRecordDetail(r) -->
+    </div>
+    <div class="modal-footer" id="rdm-footer">
+      <!-- dynamically populated — mark done / close -->
+    </div>
+  </div>
+</div>
+
+
+  <!-- VIEW FOLLOWUP DETAIL MODAL -->
+  <div class="modal-overlay" id="followupDetailModal">
+    <div class="modal modal--record-detail">
+      <div class="modal-header">
+        <h3 id="frdm-title">Follow-up</h3>
+        <button class="icon-btn" onclick="closeModal('followupDetailModal')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="frdm-body"></div>
+      <div class="modal-footer" id="frdm-footer"></div>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    /* ── Service Worker Registration ── */
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then(reg => console.log('[SW] Registered:', reg.scope))
+          .catch(err => console.warn('[SW] Failed:', err));
+      });
+    }
+
+    /* ── PWA Install Prompt ── */
+    let _pwaPrompt = null;
+
+    window.addEventListener('beforeinstallprompt', e => {
+      e.preventDefault();
+      _pwaPrompt = e;
+      // Show the install button in profile menu
+      const btn = document.getElementById('pwaInstallBtn');
+      const div = document.getElementById('pwaInstallDivider');
+      if (btn) btn.style.display = '';
+      if (div) div.style.display = '';
+    });
+
+    function triggerPWAInstall() {
+      if (!_pwaPrompt) return;
+      _pwaPrompt.prompt();
+      _pwaPrompt.userChoice.then(choice => {
+        _pwaPrompt = null;
+        const btn = document.getElementById('pwaInstallBtn');
+        const div = document.getElementById('pwaInstallDivider');
+        if (btn) btn.style.display = 'none';
+        if (div) div.style.display = 'none';
+        if (choice.outcome === 'accepted') showToast('App installed! 🎉');
+      });
+    }
+
+    // Hide install button once app is installed
+    window.addEventListener('appinstalled', () => {
+      const btn = document.getElementById('pwaInstallBtn');
+      const div = document.getElementById('pwaInstallDivider');
+      if (btn) btn.style.display = 'none';
+      if (div) div.style.display = 'none';
+      _pwaPrompt = null;
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+{
+  "name": "Xetel",
+  "short_name": "Xetel",
+  "description": "The Most Creative Ideas.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#1E50BE",
+  "theme_color": "#1E50BE",
+"icons": [
+  {
+    "src": "assests/logo/icon-192-blue.png",
+    "sizes": "192x192",
+    "type": "image/png"
+  },
+  {
+    "src": "assests/logo/icon-512-blue.png",
+    "sizes": "512x512",
+    "type": "image/png"
+  },
+  {
+    "src": "assests/logo/icon-512-maskable-blue.png",
+    "sizes": "512x512",
+    "type": "image/png",
+    "purpose": "maskable"
+  },
+  {
+    "src": "assests/logo/icon-192-maskable-blue.png",
+    "sizes": "192x192",
+    "type": "image/png",
+    "purpose": "maskable"
+  }
+],
+  "categories": ["business", "productivity"],
+  "prefer_related_applications": false
+}

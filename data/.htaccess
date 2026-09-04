@@ -1,0 +1,10 @@
+# Defense-in-depth: block direct access to sensitive file types anywhere
+# in the project, in case a file ends up outside /data/ by mistake.
+<FilesMatch "\.(sqlite|sqlite3|rar|key|env|log)$">
+    Require all denied
+</FilesMatch>
+
+# Belt-and-suspenders for the data directory specifically
+<IfModule mod_alias.c>
+    RedirectMatch 403 ^/data/.*\.(sqlite|sqlite3|rar|key)$
+</IfModule>
