@@ -237,7 +237,7 @@
           <!-- Upcoming Renewals -->
           <div class="section-header">
             <h3 class="section-title">Upcoming Renewals</h3>
-            <button class="text-btn" onclick="navigate('records')">View All</button>
+            <button class="text-btn" onclick="navigateQueries('records')">View All</button>
           </div>
           <div class="card-list" id="upcomingRenewals">
             <div class="empty-state">Loading...</div>
@@ -246,7 +246,7 @@
           <!-- Follow-up Today -->
           <div class="section-header">
             <h3 class="section-title">Follow-up Today</h3>
-            <button class="text-btn" onclick="navigate('followups')">View All</button>
+            <button class="text-btn" onclick="navigateQueries('followups')">View All</button>
           </div>
           <div class="card-list" id="followupToday">
             <div class="empty-state">Loading...</div>
@@ -275,55 +275,70 @@
       </div>
     </section>
 
-    <!-- RECORDS -->
-    <section class="page" id="page-records">
+    <!-- QUERIES (Records + Follow-ups merged, switchable via toggle) -->
+    <section class="page" id="page-queries">
       <div class="page-scroll">
-        <div class="search-bar-wrap">
-          <div class="search-bar">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" id="recordSearch" placeholder="Search records..." />
-            <button type="button" class="search-clear" onclick="clearSearch('recordSearch')" aria-label="Clear search">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          </div>
-        </div>
-        <div class="filter-chips" id="recordFilters">
-          <button class="chip active" data-filter="all">All</button>
-          <button class="chip" data-filter="pending">Pending</button>
-          <button class="chip" data-filter="done">Complete</button>
-          <button class="chip chip--date" data-filter="date" id="datePickerChip" onclick="openDatePicker()">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            <span id="dateChipLabel">Filter by Date</span>
-          </button>
-          <input type="date" id="recordDateInput" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;" onchange="applyDateFilter(this.value)" />
-        </div>
-        <div class="card-list" id="recordsList">
-          <div class="empty-state">Loading records...</div>
-        </div>
-      </div>
-    </section>
 
-    <!-- FOLLOW-UPS -->
-    <section class="page" id="page-followups">
-      <div class="page-scroll">
-        <div class="search-bar-wrap">
-          <div class="search-bar">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" id="followupSearch" placeholder="Search follow-ups..." />
-            <button type="button" class="search-clear" onclick="clearSearch('followupSearch')" aria-label="Clear search">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        <!-- Records / Follow-ups selector -->
+        <div class="queries-toggle" id="queriesToggle">
+          <button class="queries-toggle__btn active" data-view="records" onclick="setQueriesView('records')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            Records
+          </button>
+          <button class="queries-toggle__btn" data-view="followups" onclick="setQueriesView('followups')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12 19.79 19.79 0 0 1 1.93 3.4 2 2 0 0 1 3.92 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9a16 16 0 0 0 6.91 6.91l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 23 17z"/></svg>
+            Follow-ups
+          </button>
+        </div>
+
+        <!-- RECORDS SUBVIEW -->
+        <div class="queries-subview active" id="page-records">
+          <div class="search-bar-wrap">
+            <div class="search-bar">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="recordSearch" placeholder="Search records..." />
+              <button type="button" class="search-clear" onclick="clearSearch('recordSearch')" aria-label="Clear search">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="filter-chips" id="recordFilters">
+            <button class="chip active" data-filter="all">All</button>
+            <button class="chip" data-filter="pending">Pending</button>
+            <button class="chip" data-filter="done">Complete</button>
+            <button class="chip chip--date" data-filter="date" id="datePickerChip" onclick="openDatePicker()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <span id="dateChipLabel">Filter by Date</span>
             </button>
+            <input type="date" id="recordDateInput" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;" onchange="applyDateFilter(this.value)" />
+          </div>
+          <div class="card-list" id="recordsList">
+            <div class="empty-state">Loading records...</div>
           </div>
         </div>
-        <div class="filter-chips">
-          <button class="chip active" data-filter="all"     onclick="filterFollowups('all',this)">All</button>
-          <button class="chip"        data-filter="pending" onclick="filterFollowups('pending',this)">Pending</button>
-          <button class="chip"        data-filter="done"    onclick="filterFollowups('done',this)">Complete</button>
-          <button class="chip"        data-filter="leads"   onclick="filterFollowups('leads',this)">New Installation</button>
+
+        <!-- FOLLOW-UPS SUBVIEW -->
+        <div class="queries-subview" id="page-followups">
+          <div class="search-bar-wrap">
+            <div class="search-bar">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="followupSearch" placeholder="Search follow-ups..." />
+              <button type="button" class="search-clear" onclick="clearSearch('followupSearch')" aria-label="Clear search">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="filter-chips">
+            <button class="chip active" data-filter="all"     onclick="filterFollowups('all',this)">All</button>
+            <button class="chip"        data-filter="pending" onclick="filterFollowups('pending',this)">Pending</button>
+            <button class="chip"        data-filter="done"    onclick="filterFollowups('done',this)">Complete</button>
+            <button class="chip"        data-filter="leads"   onclick="filterFollowups('leads',this)">New Installation</button>
+          </div>
+          <div class="card-list" id="followupsList">
+            <div class="empty-state">Loading follow-ups...</div>
+          </div>
         </div>
-        <div class="card-list" id="followupsList">
-          <div class="empty-state">Loading follow-ups...</div>
-        </div>
+
       </div>
     </section>
 
@@ -393,17 +408,17 @@
       </div>
       <span>Clients</span>
     </button>
-    <button class="nav-item" data-page="records" onclick="navigate('records')">
+    <!-- Center FAB — opens quick-action sheet (see fab-sheet below). Not a page nav item. -->
+    <button class="nav-item nav-fab-item" id="navFabBtn" onclick="toggleFabSheet()" aria-label="Quick actions">
+      <div class="nav-fab" id="navFab">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" id="navFabIcon"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </div>
+    </button>
+    <button class="nav-item" data-page="queries" onclick="navigateQueries('records')">
       <div class="nav-icon">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10,9 9,9 8,9"/></svg>
       </div>
-      <span>Records</span>
-    </button>
-    <button class="nav-item" data-page="followups" onclick="navigate('followups')">
-      <div class="nav-icon">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12 19.79 19.79 0 0 1 1.93 3.4 2 2 0 0 1 3.92 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9a16 16 0 0 0 6.91 6.91l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 23 17z"/></svg>
-      </div>
-      <span>Follow-ups</span>
+      <span>Queries</span>
     </button>
     <button class="nav-item" data-page="profile" onclick="navigate('profile')">
       <div class="nav-icon">
@@ -412,6 +427,62 @@
       <span>Profile</span>
     </button>
   </nav>
+
+  <!-- FAB QUICK-ACTION SHEET -->
+  <div class="fab-backdrop" id="fabBackdrop" onclick="closeFabSheet()"></div>
+  <div class="fab-sheet" id="fabSheet">
+    <div class="fab-sheet__grid">
+      <button class="fab-sheet__item" onclick="fabAction('Client Ledger')">
+        <span class="fab-sheet__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h9l3 3v13a1 1 0 0 1 -1 1h-11a1 1 0 0 1 -1 -1v-15a1 1 0 0 1 1 -1"/><line x1="9" y1="9" x2="12" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg></span>
+        <span>Client Ledger</span>
+      </button>
+      <button class="fab-sheet__item" onclick="fabAction('Quick Message')">
+        <span class="fab-sheet__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9h8"/><path d="M8 13h6"/><path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-5l-5 3v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3z"/></svg></span>
+        <span>Quick Message</span>
+      </button>
+      <button class="fab-sheet__item" onclick="fabAction('File Manager')">
+        <span class="fab-sheet__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l3 3h7a1 1 0 0 1 1 1v9a2 2 0 0 1 -2 2h-13a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2"/></svg></span>
+        <span>File Manager</span>
+      </button>
+      <button class="fab-sheet__item" onclick="fabAction('Upcoming Renewals')">
+        <span class="fab-sheet__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.05 11a8 8 0 1 1 .5 4m-.5 5v-5h5"/></svg></span>
+        <span> Renewals</span>
+      </button>
+      <button class="fab-sheet__item" onclick="fabAction('Inactive Clients')">
+        <span class="fab-sheet__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0"/><path d="M6 21v-2a4 4 0 0 1 4 -4h4"/><line x1="17" y1="17" x2="22" y2="22"/><line x1="22" y1="17" x2="17" y2="22"/></svg></span>
+        <span>Inactive Clients</span>
+      </button>
+      <button class="fab-sheet__item" onclick="fabAction('System ID Checker')">
+        <span class="fab-sheet__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a12 12 0 0 0 8.5 3a12 12 0 0 1 -8.5 15a12 12 0 0 1 -8.5 -15a12 12 0 0 0 8.5 -3"/><path d="M9.5 12.5l1.5 1.5l3.5 -3.5"/></svg></span>
+        <span>System ID Checker</span>
+      </button>
+      <button class="fab-sheet__item" onclick="fabAction('Add Transaction')">
+        <span class="fab-sheet__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h13l-3 -3"/><path d="M21 14h-13l3 3"/></svg></span>
+        <span>Add Transaction</span>
+      </button>
+      <button class="fab-sheet__item" onclick="fabAction('Transaction History')">
+        <span class="fab-sheet__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8l0 4l2 2"/><path d="M3.05 11a9 9 0 1 1 .5 4"/><path d="M3 4v4h4"/></svg></span>
+        <span>Transaction History</span>
+      </button>
+      
+      <button class="fab-sheet__item" onclick="fabAction('Add Client')">
+        <span class="fab-sheet__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0"/><path d="M6 21v-2a4 4 0 0 1 4 -4h3.5"/><path d="M16 19h6"/><path d="M19 16v6"/></svg></span>
+        <span>Add Client</span>
+      </button>
+      <button class="fab-sheet__item" onclick="fabAction('Add New Record')">
+        <span class="fab-sheet__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2"/><path d="M12 11l0 6"/><path d="M9 14l6 0"/></svg></span>
+        <span>Add Record</span>
+      </button>
+      <button class="fab-sheet__item" onclick="fabAction('Add New Follow-up')">
+        <span class="fab-sheet__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h4l2 5l-2.5 1.5a11 11 0 0 0 5 5l1.5 -2.5l5 2v4a2 2 0 0 1 -2 2a16 16 0 0 1 -15 -15a2 2 0 0 1 2 -2"/><path d="M15 6h6m-3 -3v6"/></svg></span>
+        <span>Add Follow-up</span>
+      </button>
+      <button class="fab-sheet__item" onclick="fabAction('Pending Records')">
+        <span class="fab-sheet__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg></span>
+        <span>Pending Records</span>
+      </button>
+    </div>
+  </div>
 
   <!-- ====== MODALS ====== -->
 

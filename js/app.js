@@ -7,6 +7,7 @@ let currentPage = 'dashboard';
 let allClients  = [];
 let allRecords  = [];
 let allFollowups = [];
+let queriesView = 'records'; // 'records' | 'followups' — sub-view inside the merged Queries page
 
 /* ---- SMART POLLING ---- */
 let _pollTimer     = null;
@@ -67,8 +68,10 @@ function _silentRefresh() {
   switch (currentPage) {
     case 'dashboard': loadDashboard();                                                  break;
     case 'clients':   loadClients(document.getElementById('clientSearch')?.value);     break;
-    case 'records':   loadRecords(document.getElementById('recordSearch')?.value);     break;
-    case 'followups': loadFollowups(document.getElementById('followupSearch')?.value); break;
+    case 'queries':
+      if (queriesView === 'records') loadRecords(document.getElementById('recordSearch')?.value);
+      else                           loadFollowups(document.getElementById('followupSearch')?.value);
+      break;
     case 'logs':      loadLogs();                                                       break;
   }
 }
@@ -79,6 +82,7 @@ document.addEventListener('focusout', e => { if (e.target.matches('input,textare
 
 /* ---- NAVIGATION ---- */
 function navigate(page) {
+  closeFabSheet();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
 
@@ -94,7 +98,7 @@ function navigate(page) {
 
   const titles = {
     dashboard: 'Dashboard', clients: 'Clients',
-    records: 'Records', followups: 'Follow-ups', logs: 'Logs',
+    queries: 'Queries', logs: 'Logs',
     profile: 'Profile'
   };
   document.getElementById('pageTitle').textContent = titles[page] || page;
@@ -104,9 +108,7 @@ function navigate(page) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
   // Show/hide floating pills
-  const clientPill   = document.getElementById('addClientPill');
-  const recordPill   = document.getElementById('addRecordPill');
-  const followupPill = document.getElementById('addFollowupPill');
+  const clientPill = document.getElementById('addClientPill');
   if (clientPill) {
     if (page === 'clients') {
       setTimeout(() => clientPill.classList.add('visible'), 80);
@@ -114,41 +116,115 @@ function navigate(page) {
       clientPill.classList.remove('visible');
     }
   }
-  if (recordPill) {
-    if (page === 'records') {
-      setTimeout(() => recordPill.classList.add('visible'), 80);
-    } else {
-      recordPill.classList.remove('visible');
-    }
-  }
-  if (followupPill) {
-    if (page === 'followups') {
-      setTimeout(() => followupPill.classList.add('visible'), 80);
-    } else {
-      followupPill.classList.remove('visible');
-    }
+  // Records/Follow-up pills are controlled by setQueriesView() since they
+  // depend on which sub-view of the merged Queries page is active.
+  if (page !== 'queries') {
+    document.getElementById('addRecordPill')?.classList.remove('visible');
+    document.getElementById('addFollowupPill')?.classList.remove('visible');
   }
 
   // Lazy load data
   if (page === 'dashboard') loadDashboard();
   if (page === 'clients')   loadClients();
-  if (page === 'records')   loadRecords();
-  if (page === 'followups') loadFollowups();
+  if (page === 'queries')   setQueriesView(queriesView);
   if (page === 'logs')      loadLogs();
 
-  // Reset records date filter when leaving records page
-  if (page !== 'records') {
-    recordFilter = 'all';
-    recordDateFilter = '';
-    const lbl = document.getElementById('dateChipLabel');
-    const inp = document.getElementById('recordDateInput');
-    const chips = document.querySelectorAll('#recordFilters .chip');
-    if (lbl) lbl.textContent = 'Filter by Date';
-    if (inp) inp.value = '';
-    chips.forEach(c => c.classList.remove('active'));
-    const allChip = document.querySelector('#recordFilters .chip[data-filter="all"]');
-    if (allChip) allChip.classList.add('active');
+  // Reset records date filter when leaving the queries page
+  if (page !== 'queries') {
+    resetRecordFilter();
+    resetFollowupFilter();
   }
+}
+
+// Resets the Records sub-view's filter/date state back to "All".
+function resetRecordFilter() {
+  recordFilter = 'all';
+  recordDateFilter = '';
+  const lbl = document.getElementById('dateChipLabel');
+  const inp = document.getElementById('recordDateInput');
+  const chips = document.querySelectorAll('#recordFilters .chip');
+  if (lbl) lbl.textContent = 'Filter by Date';
+  if (inp) inp.value = '';
+  chips.forEach(c => c.classList.remove('active'));
+  const allChip = document.querySelector('#recordFilters .chip[data-filter="all"]');
+  if (allChip) allChip.classList.add('active');
+}
+
+// Resets the Follow-ups sub-view's filter state back to "All".
+function resetFollowupFilter() {
+  followupFilter = 'all';
+  document.querySelectorAll('#page-followups .chip').forEach(c => c.classList.remove('active'));
+  const allChip = document.querySelector('#page-followups .chip[data-filter="all"]');
+  if (allChip) allChip.classList.add('active');
+}
+
+/* ---- QUERIES (Records + Follow-ups merged view) ---- */
+
+// Switches the sub-view inside the Queries page and loads its data.
+// Also the entry point used by dashboard shortcuts (navigateQueries).
+function setQueriesView(view) {
+  const prevView = queriesView;
+  queriesView = view === 'followups' ? 'followups' : 'records';
+
+  // Switching sub-view is a fresh look at that list, not a continuation —
+  // drop whatever filter/date was applied on either side so "Pending" on
+  // Records doesn't silently linger when you come back to it later.
+  if (queriesView !== prevView) {
+    resetRecordFilter();
+    resetFollowupFilter();
+  }
+
+  document.querySelectorAll('#queriesToggle .queries-toggle__btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.view === queriesView);
+  });
+
+  document.getElementById('page-records')?.classList.toggle('active', queriesView === 'records');
+  document.getElementById('page-followups')?.classList.toggle('active', queriesView === 'followups');
+
+  const recordPill   = document.getElementById('addRecordPill');
+  const followupPill = document.getElementById('addFollowupPill');
+  if (recordPill)   recordPill.classList.toggle('visible', queriesView === 'records');
+  if (followupPill) followupPill.classList.toggle('visible', queriesView === 'followups');
+
+  if (queriesView === 'records') loadRecords();
+  else                           loadFollowups();
+}
+
+// Jump straight to the Queries page on a specific sub-view (used by
+// dashboard's "View All" shortcuts and the bottom-nav Queries item).
+function navigateQueries(view) {
+  queriesView = view === 'followups' ? 'followups' : 'records';
+  navigate('queries'); // navigate() calls setQueriesView(queriesView) internally
+}
+
+/* ---- FAB QUICK-ACTION SHEET ---- */
+let fabSheetOpen = false;
+
+function toggleFabSheet() {
+  fabSheetOpen ? closeFabSheet() : openFabSheet();
+}
+
+function openFabSheet() {
+  fabSheetOpen = true;
+  document.getElementById('fabSheet')?.classList.add('open');
+  document.getElementById('fabBackdrop')?.classList.add('open');
+  document.getElementById('navFab')?.classList.add('is-open');
+  document.body.classList.add('no-scroll');
+}
+
+function closeFabSheet() {
+  fabSheetOpen = false;
+  document.getElementById('fabSheet')?.classList.remove('open');
+  document.getElementById('fabBackdrop')?.classList.remove('open');
+  document.getElementById('navFab')?.classList.remove('is-open');
+  document.body.classList.remove('no-scroll');
+}
+
+// Placeholder — quick-action sheet items aren't wired up to real
+// functionality yet, this just closes the sheet and lets the user know.
+function fabAction(label) {
+  closeFabSheet();
+  showToast(`${label} — coming soon`);
 }
 
 /* ---- PROFILE MENU ---- */
