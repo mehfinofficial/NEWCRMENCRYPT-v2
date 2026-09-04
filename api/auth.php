@@ -174,4 +174,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'login') {
     ]);
 }
 
+// ── CHANGE PASSWORD ─────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'change_password') {
+    session_start();
+
+    $pdo = getDB();
+    requireAuth($pdo);
+
+    $body    = jsonIn();
+    $current = $body['current_password'] ?? '';
+    $new     = $body['new_password'] ?? '';
+
+    if (!$current || !$new) {
+        jsonOut(['success' => false, 'error' => 'Current and new password are required.'], 400);
+    }
+    if (strlen($new) < 6) {
+        jsonOut(['success' => false, 'error' => 'New password must be at least 6 characters.'], 400);
+    }
+
+    $uid  = (int)$_SESSION['userid'];
+    $stmt = $pdo->prepare("SELECT password FROM users WHERE uid = ? LIMIT 1");
+    $stmt->execute([$uid]);
+    $user = $stmt->fetch();
+
+    if (!$user) {
+        jsonOut(['success' => false, 'error' => 'User not found.'], 404);
+    }
+
+    // Supports legacy plain-text / MD5 passwords too, same as login
+    $valid = password_verify($current, $user['password'])
+        || $user['password'] === $current
+        || $user['password'] === md5($current);
+
+    if (!$valid) {
+        jsonOut(['success' => false, 'error' => 'Current password is incorrect.'], 401);
+    }
+
+    $hash = password_hash($new, PASSWORD_DEFAULT);
+    $pdo->prepare("UPDATE users SET password = ?, remember_token = NULL, token_expires = NULL WHERE uid = ?")
+        ->execute([$hash, $uid]);
+
+    // Log it (mirrors logAction() pattern used elsewhere)
+    logAction($pdo, 'Changed account password');
+
+    jsonOut(['success' => true]);
+}
+
 jsonOut(['error' => 'Invalid request'], 400);

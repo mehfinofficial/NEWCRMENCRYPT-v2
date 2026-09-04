@@ -1435,6 +1435,88 @@ box-shadow: var(--shadow-sm);
 [data-theme="dark"] .pm-logout:hover { background: #3b1111; }
 
 /* ========================
+   PROFILE PAGE (bottom-nav tab — separate from the top-bar profile dropdown)
+   ======================== */
+.profile-header-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 28px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.profile-header-avatar {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Manrope', sans-serif;
+  font-size: 24px; font-weight: 800;
+  margin-bottom: 12px;
+}
+.profile-header-name {
+  font-family: 'Manrope', sans-serif;
+  font-size: 17px; font-weight: 700;
+  color: var(--text-primary);
+}
+.profile-header-id {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.profile-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.profile-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 14px 16px;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px; font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: var(--transition);
+}
+.profile-row:active { background: var(--surface-2); }
+.profile-row__left { display: flex; align-items: center; gap: 10px; }
+.profile-row__icon {
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.profile-row__divider { height: 1px; background: var(--border); margin: 0 16px; }
+.profile-row--danger { color: var(--danger); }
+.profile-row--danger .profile-row__icon { background: #fef2f2; color: var(--danger); }
+[data-theme="dark"] .profile-row--danger .profile-row__icon { background: #3b1111; }
+.profile-row--danger svg:last-child { color: var(--danger); }
+
+.form-error {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.2);
+  color: var(--danger); font-size: 13px; font-weight: 600;
+  border-radius: 10px; padding: 10px 12px;
+  margin-top: 4px;
+}
+
+/* ========================
    RESPONSIVE (Tablet+)
    ======================== */
 @media (min-width: 600px) {

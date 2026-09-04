@@ -94,7 +94,8 @@ function navigate(page) {
 
   const titles = {
     dashboard: 'Dashboard', clients: 'Clients',
-    records: 'Records', followups: 'Follow-ups', logs: 'Logs'
+    records: 'Records', followups: 'Follow-ups', logs: 'Logs',
+    profile: 'Profile'
   };
   document.getElementById('pageTitle').textContent = titles[page] || page;
   currentPage = page;
@@ -171,6 +172,14 @@ function setUserInfo(username, userid) {
   document.getElementById('pmAvatar').textContent       = initial;
   document.getElementById('pmName').textContent         = username || 'Admin';
   document.getElementById('pmId').textContent           = '#' + String(userid || 1).padStart(3, '0');
+
+  // New Profile page (bottom-nav tab) — separate markup, same info
+  const profAvatar = document.getElementById('profAvatar');
+  const profName   = document.getElementById('profName');
+  const profId     = document.getElementById('profId');
+  if (profAvatar) profAvatar.textContent = initial;
+  if (profName)   profName.textContent   = username || 'Admin';
+  if (profId)     profId.textContent     = '#' + String(userid || 1).padStart(3, '0');
 }
 
 /* ---- THEME ---- */
@@ -216,6 +225,78 @@ function closeModal(id) {
   if (id === 'addRecordModal')   resetRecordForm();
   if (id === 'addClientModal')   resetClientForm();
   if (id === 'addFollowupModal') resetFollowupForm();
+  if (id === 'changePasswordModal') resetChangePasswordForm();
+}
+
+/* ---- CHANGE PASSWORD ---- */
+function resetChangePasswordForm() {
+  ['cp_current', 'cp_new', 'cp_confirm'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const err = document.getElementById('cpError');
+  if (err) { err.style.display = 'none'; err.textContent = ''; }
+  const btn = document.getElementById('cpSaveBtn');
+  if (btn) { btn.disabled = false; btn.classList.remove('loading'); }
+}
+
+function cpShowError(msg) {
+  const err = document.getElementById('cpError');
+  err.textContent = msg;
+  err.style.display = 'flex';
+}
+
+async function submitChangePassword() {
+  const err = document.getElementById('cpError');
+  err.style.display = 'none';
+
+  const current = document.getElementById('cp_current').value;
+  const next    = document.getElementById('cp_new').value;
+  const confirm = document.getElementById('cp_confirm').value;
+
+  if (!current || !next || !confirm) {
+    cpShowError('Please fill in all fields.');
+    return;
+  }
+  if (next.length < 6) {
+    cpShowError('New password must be at least 6 characters.');
+    return;
+  }
+  if (next !== confirm) {
+    cpShowError('New password and confirmation do not match.');
+    return;
+  }
+  if (next === current) {
+    cpShowError('New password must be different from the current password.');
+    return;
+  }
+
+  const btn = document.getElementById('cpSaveBtn');
+  btn.disabled = true;
+  btn.classList.add('loading');
+
+  try {
+    const res = await fetch('api/auth.php?action=change_password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ current_password: current, new_password: next })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      showToast('Password updated successfully');
+      closeModal('changePasswordModal');
+    } else {
+      cpShowError(data.error || 'Failed to update password.');
+      btn.disabled = false;
+      btn.classList.remove('loading');
+    }
+  } catch (e) {
+    cpShowError('Connection error. Please try again.');
+    btn.disabled = false;
+    btn.classList.remove('loading');
+  }
 }
 
 function resetClientForm() {

@@ -339,6 +339,44 @@
       </div>
     </section>
 
+    <!-- PROFILE -->
+    <section class="page" id="page-profile">
+      <div class="page-scroll">
+
+        <div class="profile-header-card">
+          <div class="profile-header-avatar" id="profAvatar">A</div>
+          <div class="profile-header-name" id="profName">Admin</div>
+          <div class="profile-header-id" id="profId">#001</div>
+        </div>
+
+        <div class="section-header" style="margin-top:18px">
+          <h3 class="section-title">Account</h3>
+        </div>
+        <div class="profile-card">
+          <button class="profile-row" onclick="navigate('logs')">
+            <span class="profile-row__left">
+              <span class="profile-row__icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              </span>
+              View Logs
+            </span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <div class="profile-row__divider"></div>
+          <button class="profile-row profile-row--danger" onclick="openModal('changePasswordModal')">
+            <span class="profile-row__left">
+              <span class="profile-row__icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </span>
+              Change Password
+            </span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+
+      </div>
+    </section>
+
   </main>
 
   <!-- BOTTOM NAV -->
@@ -367,17 +405,39 @@
       </div>
       <span>Follow-ups</span>
     </button>
-    <button class="nav-item" data-page="logs" onclick="navigate('logs')">
+    <button class="nav-item" data-page="profile" onclick="navigate('profile')">
       <div class="nav-icon">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       </div>
-      <span>Logs</span>
+      <span>Profile</span>
     </button>
   </nav>
 
   <!-- ====== MODALS ====== -->
 
   <!-- ADD CLIENT -->
+  <!-- CHANGE PASSWORD -->
+  <div class="modal-overlay" id="changePasswordModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Change Password</h3>
+        <button class="icon-btn" onclick="closeModal('changePasswordModal')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group"><label>Current Password *</label><input type="password" id="cp_current" placeholder="Current password" autocomplete="current-password" /></div>
+        <div class="form-group"><label>New Password *</label><input type="password" id="cp_new" placeholder="At least 6 characters" autocomplete="new-password" /></div>
+        <div class="form-group"><label>Confirm New Password *</label><input type="password" id="cp_confirm" placeholder="Re-enter new password" autocomplete="new-password" /></div>
+        <div id="cpError" class="form-error" style="display:none"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal('changePasswordModal')">Cancel</button>
+        <button class="btn btn-primary" id="cpSaveBtn" onclick="submitChangePassword()">Update Password</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="addClientModal">
     <div class="modal">
       <div class="modal-header">
