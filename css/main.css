@@ -147,6 +147,20 @@ body {
 }
 .icon-btn:hover { background: var(--accent-bg); color: var(--accent); }
 
+.item-call-btn {
+  width: 32px; height: 32px;
+  border: none;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-radius: 50%;
+  display: grid; place-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+.item-call-btn:active { transform: scale(.9); }
+[data-theme="dark"] .item-call-btn { background: rgba(0,113,227,0.18); }
+
 .avatar {
   width: 34px; height: 34px;
   background: var(--accent);

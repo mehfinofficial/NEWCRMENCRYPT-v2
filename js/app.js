@@ -798,6 +798,14 @@ function renderRecords(records) {
   renderPaginatedList(el, records, LIST_PAGE_SIZE, (r) => {
     const statusBadge = badgeHtml(r.status || 'pending');
     const sub = [r.servicename, timeAgo(r.transdate)].filter(Boolean).join(' · ');
+    const status = r.status || 'pending';
+    const client = allClients.find(c => c.clientname === r.account);
+    const phone  = (client?.contact || client?.whatsapp || '').replace(/\D/g, '');
+    const callBtn = (status === 'pending' && phone)
+      ? `<a class="item-call-btn" href="tel:${phone}" onclick="event.stopPropagation()" aria-label="Call">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12 19.79 19.79 0 0 1 1.93 3.4 2 2 0 0 1 3.92 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9a16 16 0 0 0 6.91 6.91l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 23 17z"/></svg>
+        </a>`
+      : '';
 
     return `
        <div class="list-item" style="cursor:pointer" onclick='openRecordDetailById(${JSON.stringify(r.id)})'>
@@ -808,7 +816,7 @@ function renderRecords(records) {
 <div class="item-title">${esc((allClients.find(c => c.clientname === r.account)?.firmname) || r.account)}</div>
           <div class="item-sub">${sub}</div>
         </div>
-        <div class="item-right">${statusBadge}</div>
+        <div class="item-right" style="display:flex;align-items:center;gap:8px;">${callBtn}${statusBadge}</div>
       </div>`;
   }, 'No records found', fetchMoreRecords);
 }
@@ -1627,13 +1635,23 @@ function openRecordDetail(r) {
  
   /* ── Footer ── */
   const footer = document.getElementById('rdm-footer');
-  footer.innerHTML = status === 'pending'
-    ? `
+  if (status === 'pending') {
+    const client = allClients.find(c => c.clientname === r.account);
+    const phone  = (client?.contact || client?.whatsapp || '').replace(/\D/g, '');
+    const callBtnHtml = phone
+      ? `<a class="btn btn-ghost" href="tel:${phone}" style="text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12 19.79 19.79 0 0 1 1.93 3.4 2 2 0 0 1 3.92 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9a16 16 0 0 0 6.91 6.91l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 23 17z"/></svg>Call
+        </a>`
+      : '';
+    footer.innerHTML = `
       <button class="btn btn-ghost" onclick="closeModal('recordDetailModal')">Close</button>
+      ${callBtnHtml}
       <button class="btn btn-primary" onclick="markRecordDone(${r.id})">
          Mark as Done
-      </button>`
-    : `<button class="btn btn-ghost" style="flex:1" onclick="closeModal('recordDetailModal')">Close</button>`;
+      </button>`;
+  } else {
+    footer.innerHTML = `<button class="btn btn-ghost" style="flex:1" onclick="closeModal('recordDetailModal')">Close</button>`;
+  }
  
   openModal('recordDetailModal');
 }
