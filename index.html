@@ -757,6 +757,29 @@
     </div>
   </div>
 
+  <!-- SYSTEM ID CHECKER -->
+  <div class="modal-overlay" id="sysIdCheckerModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>System ID Checker</h3>
+        <button class="icon-btn" onclick="closeModal('sysIdCheckerModal')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div style="display:flex; gap:8px; align-items:flex-end;">
+          <div class="form-group" style="flex:1; margin-bottom:0;">
+            <label>System ID</label>
+            <input type="text" id="sysid_input" placeholder="Paste system ID..." autocomplete="off"
+                   onkeydown="if(event.key==='Enter'){event.preventDefault();runSystemIdCheck();}" />
+          </div>
+          <button class="btn btn-primary" style="height:44px; white-space:nowrap;" onclick="runSystemIdCheck()">Check</button>
+        </div>
+        <div id="sysIdCheckerResult" style="margin-top:18px;"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- VIEW CLIENT DETAIL -->
   <div class="modal-overlay" id="clientDetailModal">
     <div class="modal">

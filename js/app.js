@@ -269,6 +269,10 @@ function fabAction(label) {
       navigate('clients');
       showToast('Client Ledger — coming soon');
       return;
+
+    case 'System ID Checker':
+      openSystemIdChecker();
+      return;
   }
 
   showToast(`${label} — coming soon`);
@@ -350,6 +354,7 @@ function closeModal(id) {
   if (id === 'addFollowupModal') resetFollowupForm();
   if (id === 'changePasswordModal') resetChangePasswordForm();
   if (id === 'quickMessageModal')   resetQuickMessageForm();
+  if (id === 'sysIdCheckerModal')   resetSystemIdChecker();
 }
 
 /* ---- CHANGE PASSWORD ---- */
@@ -1872,6 +1877,135 @@ function openRenewalDetail(id) {
     </div>
   `;
   openModal('renewalDetailModal');
+}
+
+/* ========================
+   SYSTEM ID CHECKER
+   ======================== */
+// Checks a pasted system ID against clients.system_id (who holds it right
+// now) AND the full transaction trail (every old + new ID a System Change
+// ever recorded, plus the ID on file at every support/renewal/install
+// row) — so a reused or previously-changed-away ID still shows its history.
+let _sysIdLastResult = null;
+
+function openSystemIdChecker() {
+  openModal('sysIdCheckerModal');
+  const input = document.getElementById('sysid_input');
+  input.value = '';
+  document.getElementById('sysIdCheckerResult').innerHTML = '';
+  setTimeout(() => input.focus(), 50);
+}
+
+function resetSystemIdChecker() {
+  document.getElementById('sysid_input').value = '';
+  document.getElementById('sysIdCheckerResult').innerHTML = '';
+  _sysIdLastResult = null;
+}
+
+async function runSystemIdCheck() {
+  const val = document.getElementById('sysid_input').value.trim();
+  const el  = document.getElementById('sysIdCheckerResult');
+  if (!val) { el.innerHTML = `<div class="empty-state">Enter a system ID to check</div>`; return; }
+
+  el.innerHTML = `<div class="empty-state">Checking...</div>`;
+  try {
+    const data = await API.checkSystemId(val);
+    _sysIdLastResult = data;
+    renderSystemIdResult(data);
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state">Failed to check system ID</div>`;
+  }
+}
+
+function systemIdServiceLabel(type) {
+  const map = {
+    'support':       'Support / Visit',
+    'renewal':       'Renewal',
+    'system change': 'System Change',
+    'install':       'New Installation',
+  };
+  return map[(type || '').toLowerCase()] || (type || 'Transaction');
+}
+
+function renderSystemIdResult(data) {
+  const el = document.getElementById('sysIdCheckerResult');
+  const parts = [];
+
+  // Never seen before — clean bill of health, nothing else to show.
+  if (!data.ever_used) {
+    parts.push(`
+      <div class="detail-row" style="border:1px dashed var(--border); border-radius:var(--radius-sm); padding:14px; align-items:center;">
+        <span class="cd-status-badge cd-status--active">New</span>
+        <span class="detail-value">This system ID has never been used before.</span>
+      </div>
+    `);
+    el.innerHTML = parts.join('');
+    return;
+  }
+
+  if (data.duplicate) {
+    parts.push(`
+      <div class="empty-state" style="color:var(--danger,#e5484d); text-align:left; padding:0 0 14px;">
+        ⚠ This ID is currently assigned to ${data.current_clients.length} different clients — worth double-checking for a data mistake.
+      </div>
+    `);
+  }
+
+  if (data.in_use) {
+    data.current_clients.forEach(c => {
+      const isActive   = !c.renewal_date || daysFromToday(c.renewal_date) >= 0;
+      const sinceLabel = c.since_source === 'system_change' ? 'Changed to this ID' : 'Client since';
+      parts.push(`
+        <div class="cd-header" style="padding-bottom:10px; border-bottom:1px solid var(--border); margin-bottom:10px;">
+          <div class="cd-header-top">
+            <div class="cd-avatar">${esc((c.firmname || c.clientname || '?')[0].toUpperCase())}</div>
+            <div class="cd-header-right">
+              <span class="cd-status-badge ${isActive ? 'cd-status--active' : 'cd-status--inactive'}">${isActive ? 'Active' : 'Inactive'}</span>
+            </div>
+          </div>
+          <div class="cd-firm">${esc(c.firmname) || '—'}</div>
+          <div class="cd-name">${esc(c.clientname)}</div>
+        </div>
+        <div class="cd-rows" style="margin-bottom:16px;">
+          ${detailRow(sinceLabel, formatDate(c.since))}
+          ${detailRow('Renewal Date', formatDate(c.renewal_date))}
+          ${c.software_type ? detailRow('Software', c.software_type) : ''}
+        </div>
+      `);
+    });
+  } else {
+    parts.push(`
+      <div class="empty-state" style="text-align:left; padding:0 0 14px;">
+        Not currently assigned to any client — it only shows up in past records below.
+      </div>
+    `);
+  }
+
+  if (data.history.length) {
+    parts.push(`<div class="detail-label" style="margin-bottom:8px;">Change History</div>`);
+    data.history.forEach(h => {
+      const dirLabel = h.to
+        ? `${esc(h.from || '—')} → ${esc(h.to)}`
+        : esc(h.from || '—');
+      parts.push(`
+        <div class="list-item" style="cursor:default;">
+          <div class="item-body">
+            <div class="item-title">${esc(h.firmname || h.account || '—')}</div>
+            <div class="item-info-row">
+              <span class="item-info-text">${esc(systemIdServiceLabel(h.servicetype))}</span>
+              <span class="item-info-dot"></span>
+              <span class="item-info-text">${formatDate(h.date)}</span>
+            </div>
+            <div class="item-info-row" style="margin-top:4px;">
+              <span class="cd-sysid-pill" style="font-size:11px; padding:3px 10px;">${dirLabel}</span>
+            </div>
+          </div>
+        </div>
+      `);
+    });
+  }
+
+  el.innerHTML = parts.join('');
 }
 
 // Shortcut from the renewal detail popup straight into Quick Message,

@@ -67,6 +67,9 @@ const API = {
   async deleteMessageTemplate(id)  { return this.post('messages.php', { action: 'delete_template', id }); },
   async logMessageSent(data)       { return this.post('messages.php', { action: 'log_sent', ...data }); },
 
+  // SYSTEM ID CHECKER
+  async checkSystemId(id) { return this.get('systemid.php', { check: id }); },
+
   // LOGS
   async getLogs() { return this.get('logs.php'); },
 
