@@ -86,34 +86,42 @@ if ($method === 'POST') {
             $servicetype = $svc['servicetype'] ?? ($body['servicetype'] ?? '');
             $newSystemid = trim($body['new_systemid'] ?? '');
 
+            // Payment amount comes in as a string from the form; normalize to
+            // a float (or null when blank) so it stores/sorts correctly.
+            $paymentAmount = null;
+            if (isset($body['payment_amount']) && $body['payment_amount'] !== '' && $body['payment_amount'] !== null) {
+                $paymentAmount = (float)$body['payment_amount'];
+            }
+
             $stmt = $pdo->prepare("
                 INSERT INTO transactions
                     (transid, account, servicename, serviceid, servicetype, systemid,
-                     transdate, renewaldate, next_renewal, payment_info,
+                     transdate, renewaldate, next_renewal, payment_info, payment_amount,
                      status, `query`, query_note, new_systemid, user, userid, created_at)
                 VALUES
                     (:transid, :account, :servicename, :serviceid, :servicetype, :systemid,
-                     :transdate, :renewaldate, :next_renewal, :payment_info,
+                     :transdate, :renewaldate, :next_renewal, :payment_info, :payment_amount,
                      :status, :query, :query_note, :new_systemid, :user, :userid, :created_at)
             ");
             $stmt->execute([
-                ':transid'      => $transid,
-                ':account'      => $body['account']      ?? '',
-                ':servicename'  => $servicename,
-                ':serviceid'    => (int)($body['serviceid'] ?? 0),
-                ':servicetype'  => $servicetype,
-                ':systemid'     => $body['systemid']     ?? '',
-                ':transdate'    => $body['transdate']    ?? date('Y-m-d'),
-                ':renewaldate'  => $body['renewaldate']  ?? null,
-                ':next_renewal' => $body['next_renewal'] ?? null,
-                ':payment_info' => $body['payment_info'] ?? null,
-                ':status'       => $body['status']       ?? 'pending',
-                ':query'        => $body['query']        ?? '',
-                ':query_note'   => $body['query_note']   ?? '',
-                ':new_systemid' => $newSystemid,
-                ':user'         => $username,
-                ':userid'       => $userid,
-                ':created_at'   => date('Y-m-d H:i:s'),
+                ':transid'        => $transid,
+                ':account'        => $body['account']      ?? '',
+                ':servicename'    => $servicename,
+                ':serviceid'      => (int)($body['serviceid'] ?? 0),
+                ':servicetype'    => $servicetype,
+                ':systemid'       => $body['systemid']     ?? '',
+                ':transdate'      => $body['transdate']    ?? date('Y-m-d'),
+                ':renewaldate'    => $body['renewaldate']  ?? null,
+                ':next_renewal'   => $body['next_renewal'] ?? null,
+                ':payment_info'   => $body['payment_info'] ?? null,
+                ':payment_amount' => $paymentAmount,
+                ':status'         => $body['status']       ?? 'pending',
+                ':query'          => $body['query']        ?? '',
+                ':query_note'     => $body['query_note']   ?? '',
+                ':new_systemid'   => $newSystemid,
+                ':user'           => $username,
+                ':userid'         => $userid,
+                ':created_at'     => date('Y-m-d H:i:s'),
             ]);
 
             if ($newSystemid && strtolower($servicetype) === 'system change') {

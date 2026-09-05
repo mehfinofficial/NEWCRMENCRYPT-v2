@@ -836,6 +836,12 @@ async function loadClientLedger(clientname) {
   }
 }
 
+function formatCurrency(amount) {
+  const num = parseFloat(amount);
+  if (isNaN(num)) return amount;
+  return '₹' + num.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return '';
   const [y, m, d] = dateStr.split('-');
@@ -1078,16 +1084,19 @@ async function saveRecord() {
     extra.query      = document.getElementById('r_query')?.value.trim() || '';
     extra.query_note = document.getElementById('r_query_note')?.value.trim() || '';
   } else if (serviceType === 'renewal') {
-    extra.renewaldate  = document.getElementById('r_renewal_date')?.value || null;
-    extra.payment_info = document.getElementById('r_payment_info')?.value.trim() || '';
-    extra.next_renewal = document.getElementById('r_next_renewal')?.value || null;
-    extra.query_note   = document.getElementById('r_renewal_note')?.value.trim() || '';
+    extra.renewaldate    = document.getElementById('r_renewal_date')?.value || null;
+    extra.payment_info   = document.getElementById('r_payment_info')?.value.trim() || '';
+    extra.payment_amount = document.getElementById('r_payment_amount')?.value || null;
+    extra.next_renewal   = document.getElementById('r_next_renewal')?.value || null;
+    extra.query_note     = document.getElementById('r_renewal_note')?.value.trim() || '';
   } else if (serviceType === 'system change') {
     extra.systemid     = document.getElementById('r_systemid')?.value || '';
     extra.new_systemid = document.getElementById('r_new_systemid')?.value.trim() || '';
     extra.query_note   = document.getElementById('r_syschange_note')?.value.trim() || '';
   } else if (serviceType === 'install') {
-    extra.query_note   = document.getElementById('r_install_note')?.value.trim() || '';
+    extra.payment_info   = document.getElementById('r_install_payment_info')?.value.trim() || '';
+    extra.payment_amount = document.getElementById('r_install_payment_amount')?.value || null;
+    extra.query_note     = document.getElementById('r_install_note')?.value.trim() || '';
   }
 
   try {
@@ -1133,8 +1142,9 @@ document.getElementById('r_transdate').value = localDateStr();
   if (thumb)  thumb.style.transform = 'translateX(0)';
   if (label)  label.textContent = 'Pending';
   // Clear all group fields
-  ['r_query_note','r_renewal_date','r_payment_info','r_next_renewal','r_renewal_note',
-   'r_query','r_systemid','r_new_systemid','r_syschange_note','r_install_note'].forEach(id => {
+  ['r_query_note','r_renewal_date','r_payment_info','r_payment_amount','r_next_renewal','r_renewal_note',
+   'r_query','r_systemid','r_new_systemid','r_syschange_note','r_install_note',
+   'r_install_payment_info','r_install_payment_amount'].forEach(id => {
     const el = document.getElementById(id); if(el) el.value = '';
   });
   // Hide all groups
@@ -2129,10 +2139,11 @@ const RECORD_TYPE_CONFIG = {
       {
         title: 'Renewal Details',
         fields: [
-          { key: 'renewaldate',  label: 'Renewal Date',  format: 'date' },
-          { key: 'next_renewal', label: 'Next Renewal',  format: 'date' },
-          { key: 'payment_info', label: 'Payment Info' },
-          { key: 'query_note',   label: 'Note' },
+          { key: 'renewaldate',    label: 'Renewal Date',  format: 'date' },
+          { key: 'next_renewal',   label: 'Next Renewal',  format: 'date' },
+          { key: 'payment_info',   label: 'Payment Info' },
+          { key: 'payment_amount', label: 'Payment Amount', format: 'currency' },
+          { key: 'query_note',     label: 'Note' },
         ]
       }
     ]
@@ -2160,9 +2171,11 @@ const RECORD_TYPE_CONFIG = {
       {
         title: 'Installation Details',
         fields: [
-          { key: 'systemid',     label: 'System ID',    pill: true },
-          { key: 'renewaldate',  label: 'Renewal Date', format: 'date' },
-          { key: 'query_note',   label: 'Note' },
+          { key: 'systemid',       label: 'System ID',    pill: true },
+          { key: 'renewaldate',    label: 'Renewal Date', format: 'date' },
+          { key: 'payment_info',   label: 'Payment Info' },
+          { key: 'payment_amount', label: 'Payment Amount', format: 'currency' },
+          { key: 'query_note',     label: 'Note' },
         ]
       }
     ]
@@ -2178,10 +2191,11 @@ const RECORD_TYPE_DEFAULT = {
     {
       title: 'Details',
       fields: [
-        { key: 'query',        label: 'Query' },
-        { key: 'query_note',   label: 'Note' },
-        { key: 'payment_info', label: 'Payment Info' },
-        { key: 'renewaldate',  label: 'Renewal Date', format: 'date' },
+        { key: 'query',          label: 'Query' },
+        { key: 'query_note',     label: 'Note' },
+        { key: 'payment_info',   label: 'Payment Info' },
+        { key: 'payment_amount', label: 'Payment Amount', format: 'currency' },
+        { key: 'renewaldate',    label: 'Renewal Date', format: 'date' },
         { key: 'next_renewal', label: 'Next Renewal',  format: 'date' },
         { key: 'systemid',     label: 'System ID',    pill: true },
         { key: 'new_systemid', label: 'New System ID', pill: true, accent: true },
@@ -2246,7 +2260,7 @@ function openRecordDetail(r) {
         .map(f => {
           const val = r[f.key];
           if (!val) return '';
-          const display = f.format === 'date' ? formatDate(val) : val;
+          const display = f.format === 'date' ? formatDate(val) : (f.format === 'currency' ? formatCurrency(val) : val);
           return rdmRow(f.label, display, { pill: f.pill, accent: f.accent });
         })
         .filter(Boolean)
