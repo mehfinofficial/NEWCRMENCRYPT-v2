@@ -1080,6 +1080,66 @@ function toggleRecordFileInput() {
   const checked = document.getElementById('r_attach_files')?.checked;
   const wrap = document.getElementById('r_files_input_wrap');
   if (wrap) wrap.style.display = checked ? 'flex' : 'none';
+  if (checked) initRecordFileDrop();
+}
+
+function _formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// Renders the chip list of currently-selected files under the dropzone.
+function _renderRecordFileList() {
+  const input = document.getElementById('r_files_input');
+  const list = document.getElementById('r_filelist');
+  if (!input || !list) return;
+  list.innerHTML = '';
+  Array.from(input.files).forEach((file, idx) => {
+    const item = document.createElement('div');
+    item.className = 'filelist-item';
+    item.innerHTML = `
+      <div class="filelist-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+      <div class="filelist-info">
+        <span class="filelist-name">${_escapeHtml(file.name)}</span>
+        <span class="filelist-size">${_formatFileSize(file.size)}</span>
+      </div>
+      <button type="button" class="filelist-remove" aria-label="Remove file" onclick="_removeRecordFile(${idx})">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>`;
+    list.appendChild(item);
+  });
+}
+
+// Removes a single file from the input's FileList by rebuilding it via DataTransfer
+// (native FileList objects are read-only, so this is the standard workaround).
+function _removeRecordFile(idx) {
+  const input = document.getElementById('r_files_input');
+  if (!input) return;
+  const dt = new DataTransfer();
+  Array.from(input.files).forEach((file, i) => { if (i !== idx) dt.items.add(file); });
+  input.files = dt.files;
+  _renderRecordFileList();
+}
+
+function _escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Wires up click-to-browse and change handling for the Add Record file input.
+// Safe to call multiple times (guards re-binding).
+function initRecordFileDrop() {
+  const drop = document.getElementById('r_filedrop');
+  const input = document.getElementById('r_files_input');
+  if (!drop || !input || drop.dataset.bound) return;
+  drop.dataset.bound = '1';
+
+  input.addEventListener('change', _renderRecordFileList);
+  drop.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); }
+  });
 }
 
 async function saveRecord() {
@@ -1191,6 +1251,8 @@ document.getElementById('r_transdate').value = localDateStr();
   if (filesInput) filesInput.value = '';
   const filesWrap = document.getElementById('r_files_input_wrap');
   if (filesWrap) filesWrap.style.display = 'none';
+  const filesList = document.getElementById('r_filelist');
+  if (filesList) filesList.innerHTML = '';
   // Hide all groups
   ['r_grp_support','r_grp_renewal','r_grp_syschange','r_grp_install','r_grp_files'].forEach(id => {
     const el = document.getElementById(id); if(el) el.style.display = 'none';
