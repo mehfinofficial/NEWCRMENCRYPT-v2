@@ -273,6 +273,10 @@ function fabAction(label) {
     case 'System ID Checker':
       openSystemIdChecker();
       return;
+
+    case 'Inactive Clients':
+      openInactiveClientsList();
+      return;
   }
 
   showToast(`${label} — coming soon`);
@@ -2028,6 +2032,69 @@ async function sendRenewalReminderFromDetail() {
   if (tmpl) document.getElementById('qm_template').value = tmpl.id;
 
   previewQuickMessage();
+}
+
+/* ========================
+   INACTIVE CLIENTS
+   ======================== */
+// Mirrors clientIsActive()'s definition of "inactive": a renewal_date that
+// has passed. Clients with no renewal_date at all are treated as active
+// everywhere else in the app, so they're excluded here too — this list is
+// specifically "renewal expired", not "no renewal set".
+let _inactiveClientsData = [];
+
+function openInactiveClientsList() {
+  openModal('inactiveClientsModal');
+  loadInactiveClientsList();
+}
+
+async function loadInactiveClientsList() {
+  const el = document.getElementById('inactiveClientsList');
+  el.innerHTML = `<div class="empty-state">Loading...</div>`;
+  try {
+    const data = await API.getClients();
+    const clients = data.clients || [];
+    _inactiveClientsData = clients
+      .filter(c => c.renewal_date && daysFromToday(c.renewal_date) < 0)
+      // Most recently expired first — the ones still likely to renew.
+      .sort((a, b) => daysFromToday(b.renewal_date) - daysFromToday(a.renewal_date));
+    renderInactiveClientsList();
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state">Failed to load inactive clients</div>`;
+  }
+}
+
+function renderInactiveClientsList() {
+  const el = document.getElementById('inactiveClientsList');
+  renderPaginatedList(el, _inactiveClientsData, LIST_PAGE_SIZE, (c) => {
+    const diff    = daysFromToday(c.renewal_date);
+    const initial = (c.firmname || c.clientname || '?')[0].toUpperCase();
+
+    return `
+      <button class="list-item client-item" onclick='openClientDetailByIdFrom(${JSON.stringify(c.id)}, _inactiveClientsData)'>
+        <div class="item-avatar">${initial}</div>
+        <div class="item-body">
+          <div class="item-title">${esc(c.firmname || c.clientname)}</div>
+          <div class="item-info-row">
+            <span class="item-info-text">${esc(c.clientname)}</span>
+            <span class="item-info-dot"></span>
+            <span class="item-info-text">Expired ${formatDate(c.renewal_date)}</span>
+          </div>
+        </div>
+        <div class="client-item-right">
+          <span class="cd-renewal-pill cd-renewal--expired">Expired ${Math.abs(diff)}d ago</span>
+        </div>
+      </button>
+    `;
+  }, 'No inactive clients');
+}
+
+// Opens the existing full client-profile modal (same one the Clients tab
+// uses) rather than a separate lightweight popup — "details like expired
+// on etc" is exactly what that modal already shows via its renewal pill.
+function openClientDetailByIdFrom(id, list) {
+  const c = list.find(x => String(x.id) === String(id));
+  if (c) openClientDetail(c);
 }
 
 /* =============================================
