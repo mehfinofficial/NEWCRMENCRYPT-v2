@@ -220,10 +220,57 @@ function closeFabSheet() {
   document.body.classList.remove('no-scroll');
 }
 
-// Placeholder — quick-action sheet items aren't wired up to real
-// functionality yet, this just closes the sheet and lets the user know.
+// Routes each quick-action sheet item to its screen. Items not built yet
+// fall through to the "coming soon" toast at the bottom.
 function fabAction(label) {
   closeFabSheet();
+
+  switch (label) {
+    case 'Add Client':
+      navigate('clients');
+      openModal('addClientModal');
+      populateSoftwareTypes();
+      return;
+
+    case 'Add New Record':
+      navigateQueries('records');
+      openModal('addRecordModal');
+      populateClientSelect();
+      populateServiceSelect();
+      return;
+
+    case 'Add New Follow-up':
+      navigateQueries('followups');
+      openModal('addFollowupModal');
+      populateFollowupClientSelect();
+      return;
+
+    case 'Pending Records':
+      navigateQueries('records');
+      // Select the "Pending" filter chip and reload with it applied.
+      document.querySelectorAll('#recordFilters .chip').forEach(c => c.classList.remove('active'));
+      document.querySelector('#recordFilters .chip[data-filter="pending"]')?.classList.add('active');
+      recordFilter = 'pending';
+      recordDateFilter = '';
+      loadRecords();
+      return;
+
+    case 'Quick Message':
+      openQuickMessage();
+      return;
+
+    case 'Upcoming Renewals':
+      openRenewalsList();
+      return;
+
+    case 'Client Ledger':
+      // Filler for now — just drops the user on the Clients list until the
+      // real ledger screen is built.
+      navigate('clients');
+      showToast('Client Ledger — coming soon');
+      return;
+  }
+
   showToast(`${label} — coming soon`);
 }
 
@@ -302,6 +349,7 @@ function closeModal(id) {
   if (id === 'addClientModal')   resetClientForm();
   if (id === 'addFollowupModal') resetFollowupForm();
   if (id === 'changePasswordModal') resetChangePasswordForm();
+  if (id === 'quickMessageModal')   resetQuickMessageForm();
 }
 
 /* ---- CHANGE PASSWORD ---- */
@@ -1543,7 +1591,310 @@ document.getElementById('addRecordModal').addEventListener('click', async () => 
   await populateServiceSelect();
 });
 
+/* ========================
+   QUICK MESSAGE
+   ======================== */
+let _qmClients        = [];
+let _qmTemplates      = [];
+let _qmSelectedClient = null;
+let _qmSelectedTemplate = null;
 
+function openQuickMessage() {
+  openModal('quickMessageModal');
+  populateQuickMessageClients();
+  populateQuickMessageTemplates();
+}
+
+async function populateQuickMessageClients() {
+  if (_qmClients.length) return;
+  try {
+    const data = await API.getClients();
+    _qmClients = data.clients || [];
+  } catch(e) {}
+}
+
+async function populateQuickMessageTemplates() {
+  const sel = document.getElementById('qm_template');
+  if (sel.options.length > 1) return; // already loaded
+  try {
+    const data = await API.getMessageTemplates();
+    _qmTemplates = data.templates || [];
+    _qmTemplates.forEach(t => sel.add(new Option(t.name, t.id)));
+  } catch(e) {}
+}
+
+// Client autocomplete for the Quick Message "Client" field — same pattern
+// as the Add Record account picker.
+function filterQmClientSuggestions() {
+  const input = document.getElementById('qm_account_search');
+  const box   = document.getElementById('qm_account_suggestions');
+  const term  = input.value.trim().toLowerCase();
+
+  const source = _qmClients.length ? _qmClients : allClients;
+
+  const matches = term
+    ? source.filter(c =>
+        (c.firmname || '').toLowerCase().includes(term) ||
+        (c.clientname || '').toLowerCase().includes(term)
+      ).slice(0, 8)
+    : source.slice(0, 8);
+
+  if (!matches.length) {
+    box.innerHTML = '<div class="autocomplete-empty">No matching clients</div>';
+    box.style.display = 'block';
+    return;
+  }
+
+  box.innerHTML = matches.map(c => `
+    <div class="autocomplete-item" onclick="selectQmClientSuggestion('${esc(c.clientname).replace(/'/g, "\\'")}')">
+      ${esc(c.firmname || c.clientname)}
+      ${c.firmname ? `<span class="ac-sub">${esc(c.clientname)}</span>` : ''}
+    </div>
+  `).join('');
+  box.style.display = 'block';
+}
+
+function selectQmClientSuggestion(clientname) {
+  const source = _qmClients.length ? _qmClients : allClients;
+  const client = source.find(c => c.clientname === clientname);
+  document.getElementById('qm_account').value = clientname;
+  document.getElementById('qm_account_search').value = client ? (client.firmname || client.clientname) : clientname;
+  document.getElementById('qm_account_suggestions').style.display = 'none';
+}
+
+document.addEventListener('click', (e) => {
+  const wrap = document.getElementById('qm_account_search');
+  const box  = document.getElementById('qm_account_suggestions');
+  if (!wrap || !box) return;
+  if (e.target !== wrap && !box.contains(e.target)) {
+    box.style.display = 'none';
+  }
+});
+
+// Fills {name}/{firm}/{renewal_date}/{system_id} placeholders with the
+// selected client's actual data.
+function fillMessageTemplate(body, client) {
+  const renewalStr = client.renewal_date ? formatDate(client.renewal_date) : '—';
+  return body
+    .replace(/{name}/g,         client.clientname || '')
+    .replace(/{firm}/g,         client.firmname || client.clientname || '')
+    .replace(/{renewal_date}/g, renewalStr)
+    .replace(/{system_id}/g,    client.system_id || '—');
+}
+
+// Step 1 -> Step 2: builds the message from the chosen client + template
+// and shows it for review before anything actually gets sent.
+function previewQuickMessage() {
+  const clientname = document.getElementById('qm_account').value;
+  const templateId = document.getElementById('qm_template').value;
+
+  if (!clientname) { showToast('Please select a client'); return; }
+  if (!templateId) { showToast('Please select a message type'); return; }
+
+  const source = _qmClients.length ? _qmClients : allClients;
+  const client   = source.find(c => c.clientname === clientname);
+  const template = _qmTemplates.find(t => String(t.id) === String(templateId));
+  if (!client)   { showToast('Client not found'); return; }
+  if (!template) { showToast('Template not found'); return; }
+
+  _qmSelectedClient   = client;
+  _qmSelectedTemplate = template;
+
+  document.getElementById('qm_preview_text').value = fillMessageTemplate(template.body, client);
+
+  const phone = (client.whatsapp || client.contact || '').replace(/\D/g, '');
+  const warn = document.getElementById('qm_no_phone_warning');
+  if (!phone) {
+    warn.textContent = 'No phone number on file for this client — you can still copy the message manually.';
+    warn.style.display = 'block';
+  } else {
+    warn.style.display = 'none';
+  }
+
+  document.getElementById('qm_step_compose').style.display  = 'none';
+  document.getElementById('qm_footer_compose').style.display = 'none';
+  document.getElementById('qm_step_preview').style.display   = 'flex';
+  document.getElementById('qm_footer_preview').style.display = 'flex';
+}
+
+function backToComposeQuickMessage() {
+  document.getElementById('qm_step_preview').style.display   = 'none';
+  document.getElementById('qm_footer_preview').style.display = 'none';
+  document.getElementById('qm_step_compose').style.display   = 'flex';
+  document.getElementById('qm_footer_compose').style.display = 'flex';
+}
+
+// India-first phone normalisation: bare 10-digit numbers get a +91 prefix
+// so wa.me/sms links work without the user having to type the country code.
+function normalizePhoneForSend(raw) {
+  let digits = (raw || '').replace(/\D/g, '');
+  if (digits.length === 10) digits = '91' + digits;
+  return digits;
+}
+
+function sendQuickMessage(channel) {
+  if (!_qmSelectedClient) return;
+  const text  = document.getElementById('qm_preview_text').value.trim();
+  if (!text) { showToast('Message is empty'); return; }
+
+  const rawPhone = _qmSelectedClient.whatsapp || _qmSelectedClient.contact || '';
+  const phone    = normalizePhoneForSend(rawPhone);
+  if (!phone) { showToast('No phone number on file for this client'); return; }
+
+  const encoded = encodeURIComponent(text);
+  if (channel === 'whatsapp') {
+    window.open(`https://wa.me/${phone}?text=${encoded}`, '_blank');
+  } else {
+    // sms: URI scheme param separator differs by platform (Android: ?body=,
+    // iOS: &body=) — ?body= is the more broadly supported default.
+    window.location.href = `sms:${rawPhone.replace(/\s+/g, '')}?body=${encoded}`;
+  }
+
+  API.logMessageSent({
+    client:   _qmSelectedClient.firmname || _qmSelectedClient.clientname,
+    template: _qmSelectedTemplate?.name || '',
+    channel,
+  }).catch(() => {});
+
+  showToast('Message opened — send it from ' + (channel === 'whatsapp' ? 'WhatsApp' : 'your SMS app'));
+  closeModal('quickMessageModal');
+}
+
+function resetQuickMessageForm() {
+  document.getElementById('qm_account_search').value = '';
+  document.getElementById('qm_account').value = '';
+  document.getElementById('qm_account_suggestions').style.display = 'none';
+  document.getElementById('qm_template').value = '';
+  document.getElementById('qm_preview_text').value = '';
+  document.getElementById('qm_no_phone_warning').style.display = 'none';
+  _qmSelectedClient = null;
+  _qmSelectedTemplate = null;
+  backToComposeQuickMessage();
+}
+
+/* ========================
+   UPCOMING RENEWALS
+   ======================== */
+// Only clients not yet expired show up here — expired ones live under
+// Inactive Clients instead, so the two lists don't overlap.
+let _renewalsData = [];
+let _renewalDetailClient = null;
+
+function openRenewalsList() {
+  openModal('renewalsModal');
+  loadRenewalsList();
+}
+
+async function loadRenewalsList() {
+  const el = document.getElementById('renewalsList');
+  el.innerHTML = `<div class="empty-state">Loading...</div>`;
+  try {
+    const data = await API.getClients();
+    const clients = data.clients || [];
+    _renewalsData = clients
+      .filter(c => c.renewal_date && daysFromToday(c.renewal_date) >= 0)
+      .sort((a, b) => daysFromToday(a.renewal_date) - daysFromToday(b.renewal_date));
+    renderRenewalsList();
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state">Failed to load renewals</div>`;
+  }
+}
+
+function renewalDaysLabel(diff) {
+  if (diff === 0) return 'Renews today';
+  if (diff === 1) return '1 day left';
+  return `${diff} days left`;
+}
+
+function renderRenewalsList() {
+  const el = document.getElementById('renewalsList');
+  renderPaginatedList(el, _renewalsData, LIST_PAGE_SIZE, (c) => {
+    const diff      = daysFromToday(c.renewal_date);
+    const pillClass = diff <= 7 ? 'cd-renewal--soon' : 'cd-renewal--ok';
+    const initial   = (c.firmname || c.clientname || '?')[0].toUpperCase();
+
+    return `
+      <button class="list-item client-item" onclick='openRenewalDetail(${JSON.stringify(c.id)})'>
+        <div class="item-avatar">${initial}</div>
+        <div class="item-body">
+          <div class="item-title">${esc(c.firmname || c.clientname)}</div>
+          <div class="item-info-row">
+            <span class="item-info-text">${esc(c.clientname)}</span>
+            <span class="item-info-dot"></span>
+            <span class="item-info-text">${formatDate(c.renewal_date)}</span>
+          </div>
+        </div>
+        <div class="client-item-right">
+          <span class="cd-renewal-pill ${pillClass}">${renewalDaysLabel(diff)}</span>
+        </div>
+      </button>
+    `;
+  }, 'No upcoming renewals');
+}
+
+// Lightweight detail popup — just the renewal-relevant fields, not the
+// full client profile (that's what Client Ledger / Clients tab is for).
+function openRenewalDetail(id) {
+  const c = _renewalsData.find(x => String(x.id) === String(id));
+  if (!c) return;
+  _renewalDetailClient = c;
+
+  const diff      = daysFromToday(c.renewal_date);
+  const pillClass = diff <= 7 ? 'cd-renewal--soon' : 'cd-renewal--ok';
+  const initial   = (c.firmname || c.clientname || '?')[0].toUpperCase();
+
+  const body = document.getElementById('renewalDetailBody');
+  body.innerHTML = `
+    <div class="cd-header">
+      <div class="cd-header-top">
+        <div class="cd-avatar">${initial}</div>
+        <div class="cd-header-right">
+          <span class="cd-renewal-pill ${pillClass}">${renewalDaysLabel(diff)}</span>
+        </div>
+      </div>
+      <div class="cd-firm">${esc(c.firmname) || '—'}</div>
+      <div class="cd-name">${esc(c.clientname)}</div>
+    </div>
+    <div class="cd-rows">
+      ${detailRow('Renewal Date', formatDate(c.renewal_date))}
+      ${detailRow('Days Pending', renewalDaysLabel(diff))}
+      ${c.system_id ? `
+      <div class="detail-row">
+        <span class="detail-label">System ID</span>
+        <span class="cd-sysid-pill">${esc(c.system_id)}</span>
+      </div>` : ''}
+      ${detailRow('Phone', c.contact)}
+      ${c.software_type ? `
+      <div class="detail-row">
+        <span class="detail-label">Software</span>
+        <span class="cd-sysid-pill">${esc(c.software_type)}</span>
+      </div>` : ''}
+    </div>
+  `;
+  openModal('renewalDetailModal');
+}
+
+// Shortcut from the renewal detail popup straight into Quick Message,
+// pre-filled with this client and the Renewal Reminder template.
+async function sendRenewalReminderFromDetail() {
+  if (!_renewalDetailClient) return;
+  const c = _renewalDetailClient;
+
+  closeModal('renewalDetailModal');
+  closeModal('renewalsModal');
+  openModal('quickMessageModal');
+
+  await populateQuickMessageClients();
+  await populateQuickMessageTemplates();
+
+  document.getElementById('qm_account').value = c.clientname;
+  document.getElementById('qm_account_search').value = c.firmname || c.clientname;
+
+  const tmpl = _qmTemplates.find(t => t.name === 'Renewal Reminder');
+  if (tmpl) document.getElementById('qm_template').value = tmpl.id;
+
+  previewQuickMessage();
+}
 
 /* =============================================
    Record View Modal — paste into app.js

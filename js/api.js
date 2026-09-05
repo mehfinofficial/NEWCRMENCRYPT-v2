@@ -60,6 +60,13 @@ const API = {
   async addFollowup(data)          { return this.post('followups.php', { action: 'add', ...data }); },
   async updateFollowup(data)       { return this.post('followups.php', { action: 'update', ...data }); },
 
+  // MESSAGE TEMPLATES (Quick Message)
+  async getMessageTemplates()      { return this.get('messages.php'); },
+  async addMessageTemplate(data)   { return this.post('messages.php', { action: 'add_template', ...data }); },
+  async updateMessageTemplate(data){ return this.post('messages.php', { action: 'update_template', ...data }); },
+  async deleteMessageTemplate(id)  { return this.post('messages.php', { action: 'delete_template', id }); },
+  async logMessageSent(data)       { return this.post('messages.php', { action: 'log_sent', ...data }); },
+
   // LOGS
   async getLogs() { return this.get('logs.php'); },
 

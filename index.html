@@ -677,6 +677,86 @@
     </div>
   </div>
 
+  <!-- QUICK MESSAGE -->
+  <div class="modal-overlay" id="quickMessageModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Quick Message</h3>
+        <button class="icon-btn" onclick="closeModal('quickMessageModal')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+
+        <!-- Step 1: pick client + template -->
+        <div id="qm_step_compose" style="display:flex;flex-direction:column;gap:12px;">
+          <div class="form-group" style="position:relative;">
+            <label>Client *</label>
+            <input type="text" id="qm_account_search" placeholder="Type client or firm name..." autocomplete="off"
+                   oninput="filterQmClientSuggestions()" onfocus="filterQmClientSuggestions()" />
+            <input type="hidden" id="qm_account" />
+            <div id="qm_account_suggestions" class="autocomplete-list"></div>
+          </div>
+          <div class="form-group">
+            <label>Message Type *</label>
+            <select id="qm_template"><option value="">Select template...</option></select>
+          </div>
+        </div>
+
+        <!-- Step 2: preview before sending -->
+        <div id="qm_step_preview" style="display:none;flex-direction:column;gap:12px;">
+          <div class="form-group">
+            <label>Message Preview (edit if needed)</label>
+            <textarea id="qm_preview_text" rows="6" style="resize:vertical;font-family:inherit;font-size:14px;padding:10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text-primary);width:100%;box-sizing:border-box;"></textarea>
+          </div>
+          <div id="qm_no_phone_warning" style="display:none;font-size:13px;color:var(--danger,#e5484d);"></div>
+        </div>
+
+      </div>
+      <div class="modal-footer" id="qm_footer_compose">
+        <button class="btn btn-ghost" onclick="closeModal('quickMessageModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="previewQuickMessage()">Preview Message</button>
+      </div>
+      <div class="modal-footer" id="qm_footer_preview" style="display:none;flex-wrap:wrap;">
+        <button class="btn btn-ghost" onclick="backToComposeQuickMessage()">Back</button>
+        <button class="btn btn-primary" style="background:#25D366;" onclick="sendQuickMessage('whatsapp')">Send via WhatsApp</button>
+        <button class="btn btn-primary" onclick="sendQuickMessage('sms')">Send via SMS</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- UPCOMING RENEWALS -->
+  <div class="modal-overlay" id="renewalsModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Upcoming Renewals</h3>
+        <button class="icon-btn" onclick="closeModal('renewalsModal')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div id="renewalsList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RENEWAL DETAIL (lightweight) -->
+  <div class="modal-overlay" id="renewalDetailModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Renewal Details</h3>
+        <button class="icon-btn" onclick="closeModal('renewalDetailModal')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="renewalDetailBody"></div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal('renewalDetailModal')">Close</button>
+        <button class="btn btn-primary" onclick="sendRenewalReminderFromDetail()">Send Reminder</button>
+      </div>
+    </div>
+  </div>
+
   <!-- VIEW CLIENT DETAIL -->
   <div class="modal-overlay" id="clientDetailModal">
     <div class="modal">
