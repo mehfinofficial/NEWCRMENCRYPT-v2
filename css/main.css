@@ -1934,6 +1934,17 @@ box-shadow: var(--shadow-sm);
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 30%, transparent);
 }
+
+/* File pill on a record's Files section — clickable, opens File Detail modal */
+.rdm-pill--file {
+  cursor: pointer;
+  transition: var(--transition);
+}
+.rdm-pill--file:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
 /* ========================
    DATE PICKER CHIP
    ======================== */

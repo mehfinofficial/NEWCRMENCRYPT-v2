@@ -616,6 +616,20 @@
             <textarea id="r_install_note" rows="2" placeholder="Installation details..." style="resize:vertical;font-family:inherit;font-size:14px;padding:10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text-primary);width:100%;box-sizing:border-box;"></textarea>
           </div>
         </div>
+
+        <!-- Attach Files — shown for Support / Renewal / New Installation only.
+             Ticking the box reveals a file input; selected files are uploaded
+             right after the record itself is saved (see saveRecord()). -->
+        <div id="r_grp_files" style="display:none;flex-direction:column;gap:10px;">
+          <div class="form-group" style="flex-direction:row;align-items:center;gap:8px;display:flex;">
+            <input type="checkbox" id="r_attach_files" onchange="toggleRecordFileInput()" style="width:16px;height:16px;accent-color:var(--accent);" />
+            <label style="margin:0;font-weight:600;">Attach Files</label>
+          </div>
+          <div class="form-group" id="r_files_input_wrap" style="display:none;">
+            <label>Files</label>
+            <input type="file" id="r_files_input" multiple />
+          </div>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="closeModal('addRecordModal')">Cancel</button>
@@ -849,6 +863,44 @@
         </div>
         <div class="card-list" id="transactionHistoryList"></div>
       </div>
+    </div>
+  </div>
+
+  <!-- FILE MANAGER -->
+  <div class="modal-overlay" id="fileManagerModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>File Manager</h3>
+        <button class="icon-btn" onclick="closeModal('fileManagerModal')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="search-bar-wrap" style="margin-bottom:14px;">
+          <div class="search-bar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="fmSearch" placeholder="Search by file or client name..." oninput="loadFileManager(this.value)" />
+            <button type="button" class="search-clear" onclick="clearSearch('fmSearch')" aria-label="Clear search">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="card-list" id="fileManagerList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FILE DETAIL -->
+  <div class="modal-overlay" id="fileDetailModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>File Details</h3>
+        <button class="icon-btn" onclick="closeModal('fileDetailModal')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="fileDetailBody"></div>
+      <div class="modal-footer" id="fileDetailFooter"></div>
     </div>
   </div>
 

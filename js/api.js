@@ -79,4 +79,26 @@ const API = {
 
   // SYNC
   async checkSync(since = 0) { return this.get('sync.php', { since }); },
+
+  // FILE MANAGER
+  async getFiles(params = {})         { return this.get('files.php', params); },
+  async getFilesForRecord(recordId)   { return this.get('files.php', { record_id: recordId }); },
+  async getFileInfo(id)               { return this.get('files.php', { info: id }); },
+  async generateFileLink(id)          { return this.post('files.php', { action: 'generate_link', id }); },
+  // Multipart upload — bypasses the JSON post() helper since a file can't
+  // be JSON-encoded. Same base URL / credentials behavior as the rest of API.
+  async uploadFile(file, { recordId, account } = {}) {
+    const fd = new FormData();
+    fd.append('action', 'upload');
+    fd.append('file', file);
+    if (recordId) fd.append('record_id', recordId);
+    if (account)  fd.append('account', account);
+    const res = await fetch(this.base + 'files.php', {
+      method: 'POST',
+      credentials: 'include',
+      body: fd,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
 };

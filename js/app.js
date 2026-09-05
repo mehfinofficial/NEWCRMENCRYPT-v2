@@ -285,6 +285,10 @@ function fabAction(label) {
     case 'Transaction History':
       openTransactionHistory();
       return;
+
+    case 'File Manager':
+      openFileManager();
+      return;
   }
 
   showToast(`${label} — coming soon`);
@@ -1044,15 +1048,17 @@ function onServiceSelect() {
   sel.dataset.serviceName = svc.name || '';
 
   // Hide all groups first
-  ['r_grp_support','r_grp_renewal','r_grp_syschange','r_grp_install'].forEach(id => {
+  ['r_grp_support','r_grp_renewal','r_grp_syschange','r_grp_install','r_grp_files'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
 
   if (type === 'support') {
     document.getElementById('r_grp_support').style.display = 'flex';
+    document.getElementById('r_grp_files').style.display = 'flex';
   } else if (type === 'renewal') {
     document.getElementById('r_grp_renewal').style.display = 'flex';
+    document.getElementById('r_grp_files').style.display = 'flex';
     // Prefill current renewal date from selected client
     const client = allClients.find(c => c.clientname === document.getElementById('r_account').value);
     if (client?.renewal_date) {
@@ -1065,7 +1071,15 @@ function onServiceSelect() {
     if (client?.system_id) document.getElementById('r_systemid').value = client.system_id;
   } else if (type === 'install') {
     document.getElementById('r_grp_install').style.display = 'flex';
+    document.getElementById('r_grp_files').style.display = 'flex';
   }
+}
+
+// Toggles the file <input> visibility when "Attach Files" is (un)ticked.
+function toggleRecordFileInput() {
+  const checked = document.getElementById('r_attach_files')?.checked;
+  const wrap = document.getElementById('r_files_input_wrap');
+  if (wrap) wrap.style.display = checked ? 'flex' : 'none';
 }
 
 async function saveRecord() {
@@ -1109,7 +1123,21 @@ async function saveRecord() {
   }
 
   try {
-    await API.addRecord({ action: 'add', ...base, ...extra });
+    const result = await API.addRecord({ action: 'add', ...base, ...extra });
+
+    // If files were attached, upload them now tied to the new record's id.
+    const attachFiles = document.getElementById('r_attach_files')?.checked;
+    const filesInput   = document.getElementById('r_files_input');
+    const filesToUpload = (attachFiles && filesInput && filesInput.files.length)
+      ? Array.from(filesInput.files) : [];
+    for (const file of filesToUpload) {
+      try {
+        await API.uploadFile(file, { recordId: result.id, account: base.account });
+      } catch (e) {
+        showToast(`Failed to upload ${file.name}`);
+      }
+    }
+
     showToast('Record saved');
     closeModal('addRecordModal');
     resetRecordForm();
@@ -1156,8 +1184,15 @@ document.getElementById('r_transdate').value = localDateStr();
    'r_install_payment_info','r_install_payment_amount'].forEach(id => {
     const el = document.getElementById(id); if(el) el.value = '';
   });
+  // Reset Attach Files controls
+  const attachCb = document.getElementById('r_attach_files');
+  if (attachCb) attachCb.checked = false;
+  const filesInput = document.getElementById('r_files_input');
+  if (filesInput) filesInput.value = '';
+  const filesWrap = document.getElementById('r_files_input_wrap');
+  if (filesWrap) filesWrap.style.display = 'none';
   // Hide all groups
-  ['r_grp_support','r_grp_renewal','r_grp_syschange','r_grp_install'].forEach(id => {
+  ['r_grp_support','r_grp_renewal','r_grp_syschange','r_grp_install','r_grp_files'].forEach(id => {
     const el = document.getElementById(id); if(el) el.style.display = 'none';
   });
 }
@@ -2292,6 +2327,157 @@ function openTransactionHistoryDetailById(id) {
   if (r) openRecordDetail(r);
 }
 
+/* ========================
+   FILE MANAGER
+   ======================== */
+let allFiles = [];
+
+function openFileManager() {
+  openModal('fileManagerModal');
+  const search = document.getElementById('fmSearch');
+  if (search) search.value = '';
+  loadFileManager();
+}
+
+async function loadFileManager(search = '') {
+  const el = document.getElementById('fileManagerList');
+  el.innerHTML = `<div class="empty-state">Loading...</div>`;
+  try {
+    const data = await API.getFiles({ search });
+    allFiles = data.files || [];
+    renderFileManagerList(allFiles);
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state">Failed to load files</div>`;
+  }
+}
+
+function renderFileManagerList(files) {
+  const el = document.getElementById('fileManagerList');
+  if (!files.length) { el.innerHTML = `<div class="empty-state">No files yet</div>`; return; }
+  el.innerHTML = files.map(f => `
+    <button class="list-item" onclick='openFileDetailById(${JSON.stringify(f.id)})'>
+      <div class="item-avatar" style="background:var(--surface-2)">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+      </div>
+      <div class="item-body">
+        <div class="item-title">${esc(f.original_name)}</div>
+        <div class="item-sub">${esc(f.firmname || f.account || 'Unknown client')} · ${formatFileSize(f.filesize)}</div>
+      </div>
+    </button>
+  `).join('');
+}
+
+function formatFileSize(bytes) {
+  bytes = parseInt(bytes, 10) || 0;
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+function formatTime(dtStr) {
+  if (!dtStr) return '';
+  const d = new Date(dtStr.replace(' ', 'T'));
+  return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+}
+
+// Opens the File Detail modal for a given file id — used from both the
+// File Manager list (already has the object in allFiles) and the record
+// detail's Files pill (which might not, e.g. before File Manager was ever
+// opened this session) — that path fetches the single file instead.
+function openFileDetailById(id) {
+  const f = allFiles.find(x => x.id === id);
+  if (f) { openFileDetail(f); return; }
+  loadAndOpenFileDetail(id);
+}
+
+async function loadAndOpenFileDetail(id) {
+  try {
+    const data = await API.getFileInfo(id);
+    if (data.file) openFileDetail(data.file);
+  } catch (e) { showToast('Failed to load file'); }
+}
+
+function openFileDetail(f) {
+  const body = document.getElementById('fileDetailBody');
+  body.innerHTML = `
+    <div class="rdm-section" style="margin-top:0;">
+      ${rdmRow('File Name', f.original_name)}
+      ${rdmRow('Client', f.firmname || f.account || '—')}
+      ${rdmRow('Uploaded', formatDate(f.created_at))}
+      ${rdmRow('Size', formatFileSize(f.filesize))}
+    </div>
+    <div class="rdm-section" id="fileLinkSection" style="display:none;">
+      <div class="rdm-section-title">Shareable Link</div>
+      <div class="form-group">
+        <input type="text" id="fileLinkInput" readonly
+               style="font-size:13px;padding:10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text-primary);width:100%;box-sizing:border-box;" />
+      </div>
+      <div id="fileLinkExpiry" style="font-size:12px;color:var(--text-secondary);"></div>
+    </div>
+  `;
+  const footer = document.getElementById('fileDetailFooter');
+  footer.innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal('fileDetailModal')">Close</button>
+    <button class="btn btn-ghost" onclick="generateFileLinkFor(${f.id})">Generate Link</button>
+    <button class="btn btn-primary" onclick="downloadFileNow(${f.id})">Download</button>
+  `;
+  openModal('fileDetailModal');
+}
+
+function downloadFileNow(id) {
+  window.open(API.base + 'files.php?download=' + id, '_blank');
+}
+
+async function generateFileLinkFor(id) {
+  try {
+    const data = await API.generateFileLink(id);
+    const section = document.getElementById('fileLinkSection');
+    const input   = document.getElementById('fileLinkInput');
+    const expiry  = document.getElementById('fileLinkExpiry');
+    if (!section || !input) return;
+
+    section.style.display = 'block';
+    input.value = data.url;
+    input.select?.();
+
+    if (navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(data.url);
+        showToast('Link copied — valid for 10 minutes');
+      } catch (e) {
+        showToast('Link generated — valid for 10 minutes');
+      }
+    } else {
+      showToast('Link generated — valid for 10 minutes');
+    }
+
+    if (expiry) expiry.textContent = 'Expires at ' + formatTime(data.expires_at);
+  } catch (e) {
+    showToast('Failed to generate link');
+  }
+}
+
+// Loads and renders the "Files" pill row inside a Record Detail modal.
+// Hides the whole section when the record has no attached files.
+async function loadRecordFiles(recordId) {
+  const section = document.getElementById('rdm-files-section');
+  const list    = document.getElementById('rdm-files-list');
+  if (!section || !list) return;
+  try {
+    const data  = await API.getFilesForRecord(recordId);
+    const files = data.files || [];
+    if (!files.length) { section.style.display = 'none'; return; }
+    section.style.display = 'block';
+    list.innerHTML = files.map(f => `
+      <span class="rdm-pill rdm-pill--file" onclick='openFileDetailById(${JSON.stringify(f.id)})'>
+        📎 ${esc(f.original_name)}
+      </span>
+    `).join('');
+  } catch (e) {
+    section.style.display = 'none';
+  }
+}
+
 /* =============================================
    Record View Modal — paste into app.js
    (or add as a new <script> after app.js)
@@ -2472,6 +2658,12 @@ function openRecordDetail(r) {
           ${rows}
         </div>`;
     }).join('')}
+
+    <!-- Files attached to this record — filled in by loadRecordFiles() below -->
+    <div class="rdm-section" id="rdm-files-section" style="display:none;">
+      <div class="rdm-section-title">Files</div>
+      <div id="rdm-files-list" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+    </div>
  
   `;
  
@@ -2496,6 +2688,7 @@ function openRecordDetail(r) {
   }
  
   openModal('recordDetailModal');
+  loadRecordFiles(r.id);
 }
  
 /* ── ROW HELPER ─────────────────────────────── */
