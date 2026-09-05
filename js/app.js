@@ -264,10 +264,10 @@ function fabAction(label) {
       return;
 
     case 'Client Ledger':
-      // Filler for now — just drops the user on the Clients list until the
-      // real ledger screen is built.
+      // The ledger itself lives inside each client's detail modal (History
+      // section) — this shortcut just gets the user to the Clients list
+      // so they can pick a client and open it.
       navigate('clients');
-      showToast('Client Ledger — coming soon');
       return;
 
     case 'System ID Checker':

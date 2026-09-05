@@ -720,10 +720,10 @@
         <button class="btn btn-ghost" onclick="closeModal('quickMessageModal')">Cancel</button>
         <button class="btn btn-primary" onclick="previewQuickMessage()">Preview Message</button>
       </div>
-      <div class="modal-footer" id="qm_footer_preview" style="display:none;flex-wrap:wrap;">
-        <button class="btn btn-ghost" onclick="backToComposeQuickMessage()">Back</button>
-        <button class="btn btn-primary" style="background:#25D366;" onclick="sendQuickMessage('whatsapp')">Send via WhatsApp</button>
-        <button class="btn btn-primary" onclick="sendQuickMessage('sms')">Send via SMS</button>
+      <div class="modal-footer" id="qm_footer_preview" style="display:none;">
+        <button class="btn btn-primary" style="flex:1;" onclick="sendQuickMessage('sms')">Send via SMS</button>
+        <button class="btn btn-primary" style="flex:1;background:#25D366;" onclick="sendQuickMessage('whatsapp')">Send via WhatsApp</button>
+        <button class="btn btn-ghost" style="flex:1;" onclick="backToComposeQuickMessage()">Back</button>
       </div>
     </div>
   </div>
@@ -738,7 +738,7 @@
         </button>
       </div>
       <div class="modal-body">
-        <div id="renewalsList"></div>
+        <div class="card-list" id="renewalsList"></div>
       </div>
     </div>
   </div>
@@ -793,7 +793,7 @@
         </button>
       </div>
       <div class="modal-body">
-        <div id="inactiveClientsList"></div>
+        <div class="card-list" id="inactiveClientsList"></div>
       </div>
     </div>
   </div>
@@ -847,7 +847,7 @@
             </button>
           </div>
         </div>
-        <div id="transactionHistoryList"></div>
+        <div class="card-list" id="transactionHistoryList"></div>
       </div>
     </div>
   </div>
