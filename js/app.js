@@ -277,6 +277,14 @@ function fabAction(label) {
     case 'Inactive Clients':
       openInactiveClientsList();
       return;
+
+    case 'Add Transaction':
+      openAddTransactionModal();
+      return;
+
+    case 'Transaction History':
+      openTransactionHistory();
+      return;
   }
 
   showToast(`${label} — coming soon`);
@@ -359,6 +367,7 @@ function closeModal(id) {
   if (id === 'changePasswordModal') resetChangePasswordForm();
   if (id === 'quickMessageModal')   resetQuickMessageForm();
   if (id === 'sysIdCheckerModal')   resetSystemIdChecker();
+  if (id === 'addTransactionModal') resetTransactionForm();
 }
 
 /* ---- CHANGE PASSWORD ---- */
@@ -2107,6 +2116,182 @@ function openClientDetailByIdFrom(id, list) {
   if (c) openClientDetail(c);
 }
 
+/* ========================
+   ADD TRANSACTION
+   (standalone client payment — logged directly, not tied to a
+   support/renewal/install service)
+   ======================== */
+let _transactionClients = [];
+
+async function populateTransactionClientSelect() {
+  if (_transactionClients.length) return;
+  try {
+    const data = await API.getClients();
+    _transactionClients = data.clients || [];
+  } catch (e) {}
+}
+
+function openAddTransactionModal() {
+  openModal('addTransactionModal');
+  populateTransactionClientSelect();
+  resetTransactionForm();
+  const dateEl = document.getElementById('at_transdate');
+  if (dateEl) dateEl.value = localDateStr();
+}
+
+// Client autocomplete for the Add Transaction "Client" field — same
+// pattern as the Add Record account picker, kept separate (own element
+// IDs / own client cache) so the two modals never step on each other.
+function filterTransactionClientSuggestions() {
+  const input = document.getElementById('at_account_search');
+  const box   = document.getElementById('at_account_suggestions');
+  const term  = input.value.trim().toLowerCase();
+
+  const source = _transactionClients.length ? _transactionClients : allClients;
+
+  const matches = term
+    ? source.filter(c =>
+        (c.firmname || '').toLowerCase().includes(term) ||
+        (c.clientname || '').toLowerCase().includes(term)
+      ).slice(0, 8)
+    : source.slice(0, 8);
+
+  if (!matches.length) {
+    box.innerHTML = '<div class="autocomplete-empty">No matching clients</div>';
+    box.style.display = 'block';
+    return;
+  }
+
+  box.innerHTML = matches.map(c => `
+    <div class="autocomplete-item" onclick="selectTransactionClientSuggestion('${esc(c.clientname).replace(/'/g, "\\'")}')">
+      ${esc(c.firmname || c.clientname)}
+      ${c.firmname ? `<span class="ac-sub">${esc(c.clientname)}</span>` : ''}
+    </div>
+  `).join('');
+  box.style.display = 'block';
+}
+
+function selectTransactionClientSuggestion(clientname) {
+  const source = _transactionClients.length ? _transactionClients : allClients;
+  const client = source.find(c => c.clientname === clientname);
+  document.getElementById('at_account').value = clientname;
+  document.getElementById('at_account_search').value = client ? (client.firmname || client.clientname) : clientname;
+  document.getElementById('at_account_suggestions').style.display = 'none';
+}
+
+document.addEventListener('click', (e) => {
+  const wrap = document.getElementById('at_account_search');
+  const box  = document.getElementById('at_account_suggestions');
+  if (!wrap || !box) return;
+  if (e.target !== wrap && !box.contains(e.target)) {
+    box.style.display = 'none';
+  }
+});
+
+async function saveTransaction() {
+  const account = document.getElementById('at_account').value;
+  const amount  = document.getElementById('at_payment_amount').value;
+
+  if (!account) { showToast('Select a client'); return; }
+  if (!amount || parseFloat(amount) <= 0) { showToast('Enter a valid payment amount'); return; }
+
+  const data = {
+    account,
+    transdate:      document.getElementById('at_transdate').value || localDateStr(),
+    payment_info:   document.getElementById('at_payment_info').value.trim(),
+    payment_amount: amount,
+    note:           document.getElementById('at_note').value.trim(),
+  };
+
+  try {
+    await API.addPayment(data);
+    showToast('Payment recorded');
+    closeModal('addTransactionModal');
+  } catch (e) { showToast('Failed to save payment'); }
+}
+
+function resetTransactionForm() {
+  ['at_account', 'at_account_search', 'at_payment_info', 'at_payment_amount', 'at_note'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const box = document.getElementById('at_account_suggestions');
+  if (box) box.style.display = 'none';
+  document.getElementById('at_transdate').value = localDateStr();
+}
+
+/* ========================
+   TRANSACTION HISTORY
+   (Add Transactions + Renewal payments + Installation payments,
+   with amount totals)
+   ======================== */
+let allTransactionHistory = [];
+let transactionHistoryPaging = { page: 1, hasMore: false, search: '' };
+
+function openTransactionHistory() {
+  openModal('transactionHistoryModal');
+  const search = document.getElementById('thSearch');
+  if (search) search.value = '';
+  loadTransactionHistory();
+}
+
+async function loadTransactionHistory(search = '') {
+  const el = document.getElementById('transactionHistoryList');
+  el.innerHTML = `<div class="empty-state">Loading...</div>`;
+  try {
+    const data = await API.getTransactionHistory({ search, page: 1 });
+    allTransactionHistory = data.records || [];
+    transactionHistoryPaging = { page: 1, hasMore: !!data.hasMore, search };
+    renderTransactionHistoryList(allTransactionHistory);
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state">Failed to load transaction history</div>`;
+  }
+}
+
+async function fetchMoreTransactionHistory() {
+  if (!transactionHistoryPaging.hasMore) return false;
+  const nextPage = transactionHistoryPaging.page + 1;
+  try {
+    const data = await API.getTransactionHistory({ search: transactionHistoryPaging.search, page: nextPage });
+    const newRows = data.records || [];
+    allTransactionHistory.push(...newRows);
+    transactionHistoryPaging.page = nextPage;
+    transactionHistoryPaging.hasMore = !!data.hasMore;
+    return newRows.length > 0;
+  } catch (e) {
+    return false;
+  }
+}
+
+function transactionHistoryTypeLabel(type) {
+  const map = { payment: 'Payment', renewal: 'Renewal', install: 'New Installation' };
+  return map[(type || '').toLowerCase()] || (type || 'Transaction');
+}
+
+function renderTransactionHistoryList(records) {
+  const el = document.getElementById('transactionHistoryList');
+  renderPaginatedList(el, records, LIST_PAGE_SIZE, (r) => {
+    const client = allClients.find(c => c.clientname === r.account) || _transactionClients.find(c => c.clientname === r.account);
+    const sub = [transactionHistoryTypeLabel(r.servicetype), formatDate(r.transdate), r.payment_info].filter(Boolean).join(' · ');
+
+    return `
+      <div class="list-item" style="cursor:pointer" onclick='openTransactionHistoryDetailById(${JSON.stringify(r.id)})'>
+        <div class="item-avatar" style="background:var(--surface-2)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        </div>
+        <div class="item-body">
+          <div class="item-title">${esc((client && client.firmname) || r.account)}</div>
+          <div class="item-sub">${sub}</div>
+        </div>
+        <div class="item-right" style="font-weight:700;color:var(--success);">${formatCurrency(r.payment_amount)}</div>
+      </div>`;
+  }, 'No transactions found', fetchMoreTransactionHistory);
+}
+
+function openTransactionHistoryDetailById(id) {
+  const r = allTransactionHistory.find(x => x.id === id);
+  if (r) openRecordDetail(r);
+}
+
 /* =============================================
    Record View Modal — paste into app.js
    (or add as a new <script> after app.js)
@@ -2175,6 +2360,21 @@ const RECORD_TYPE_CONFIG = {
           { key: 'renewaldate',    label: 'Renewal Date', format: 'date' },
           { key: 'payment_info',   label: 'Payment Info' },
           { key: 'payment_amount', label: 'Payment Amount', format: 'currency' },
+          { key: 'query_note',     label: 'Note' },
+        ]
+      }
+    ]
+  },
+  payment: {
+    label: 'Payment',
+    color: '--success',
+    icon: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>`,
+    sections: [
+      {
+        title: 'Payment Details',
+        fields: [
+          { key: 'payment_info',   label: 'Payment Info' },
+          { key: 'payment_amount', label: 'Amount', format: 'currency' },
           { key: 'query_note',     label: 'Note' },
         ]
       }

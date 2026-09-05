@@ -55,6 +55,10 @@ const API = {
   async getRecords(params = {}) { return this.get('records.php', params); },
   async addRecord(data)         { return this.post('records.php', { action: 'add', ...data }); },
 
+  // TRANSACTIONS (Add Transaction / Transaction History)
+  async addPayment(data)             { return this.post('records.php', { action: 'add_payment', ...data }); },
+  async getTransactionHistory(params = {}) { return this.get('records.php', { history: 1, ...params }); },
+
   // FOLLOWUPS
   async getFollowups(params = {})  { return this.get('followups.php', params); },
   async addFollowup(data)          { return this.post('followups.php', { action: 'add', ...data }); },
