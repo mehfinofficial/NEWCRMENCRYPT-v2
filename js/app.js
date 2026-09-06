@@ -480,6 +480,9 @@ async function loadDashboard() {
     // Bar chart
     renderBarChart(data.chart_data || []);
 
+    // Resolution rate ring
+    renderResolutionRate(data.resolution_rate || {});
+
     // Stat pills
     const t = data.trends || {};
     document.getElementById('statPills').innerHTML =
@@ -556,6 +559,26 @@ function renderBarChart(chartData) {
         el.style.transition = `transform 0.45s cubic-bezier(.34,1.3,.64,1) ${i * 55}ms`;
         el.style.transform = 'scaleY(1)';
       });
+    });
+  });
+}
+
+function renderResolutionRate(res) {
+  const pct      = res.pct ?? 0;
+  const resolved = res.resolved ?? 0;
+  const opened   = res.opened ?? 0;
+  const circumference = 163.4; // 2 * PI * r(26)
+
+  document.getElementById('resRatePct').textContent = pct + '%';
+  document.getElementById('resRateSub').textContent =
+    opened > 0 ? `${resolved} of ${opened} queries closed this week` : 'No queries opened this week';
+
+  const arc = document.getElementById('resRateArc');
+  const offset = circumference - (circumference * pct / 100);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      arc.style.transition = 'stroke-dashoffset 0.6s cubic-bezier(.34,1.3,.64,1)';
+      arc.setAttribute('stroke-dashoffset', offset);
     });
   });
 }
@@ -1563,30 +1586,51 @@ function getRecordStatus(r) {
 }
 
 function renewalItem(r) {
-  const status = getRecordStatus(r);
+  const diff      = daysFromToday(r.renewal_date);
+  const pillClass = diff <= 2 ? 'cd-renewal--soon' : 'cd-renewal--ok';
+  const initial   = (r.firmname || r.clientname || '?')[0].toUpperCase();
   return `
-    <div class="list-item" style="cursor:default">
-      <div class="item-avatar" style="background:var(--surface-2)">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
-      </div>
+    <button class="list-item client-item" onclick='openRenewalDetailFromDashboard(${JSON.stringify(r.id)})'>
+      <div class="item-avatar">${initial}</div>
       <div class="item-body">
-        <div class="item-title">${esc(r.account)}</div>
-        <div class="item-sub">${esc(r.servicename)} · ${formatDate(r.renewaldate)}</div>
+        <div class="item-title">${esc(r.firmname || r.clientname)}</div>
+        <div class="item-sub">${esc(r.clientname)} · ${formatDate(r.renewal_date)}</div>
       </div>
-      <div class="item-right">${badgeHtml(status)}</div>
-    </div>`;
+      <div class="item-right"><span class="cd-renewal-pill ${pillClass}">${renewalDaysLabel(diff)}</span></div>
+    </button>`;
+}
+
+// Dashboard's renewal cards are a lighter-weight fetch (id/clientname/
+// firmname/renewal_date only), so opening the detail popup pulls the full
+// renewals list first if it isn't already loaded, then reuses the same
+// modal the FAB "Upcoming Renewals" list uses.
+async function openRenewalDetailFromDashboard(id) {
+  if (!_renewalsData.length) {
+    await loadRenewalsList();
+  }
+  openRenewalDetail(id);
 }
 
 function followupItem(f) {
+  const hasClient = f.type === 'client' && f.clientname;
+  const title = hasClient ? f.clientname : f.phonenumber;
+  const sub   = hasClient ? `${esc(f.phonenumber)} · Today` : `Today · ${badgeHtml(f.status)}`;
+  const phone = (f.phonenumber || '').replace(/\D/g, '');
+  const callBtn = phone
+    ? `<a class="item-call-btn" href="tel:${phone}" onclick="event.stopPropagation()" aria-label="Call">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12 19.79 19.79 0 0 1 1.93 3.4 2 2 0 0 1 3.92 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9a16 16 0 0 0 6.91 6.91l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 23 17z"/></svg>
+      </a>`
+    : '';
   return `
     <div class="list-item" style="cursor:default">
-      <div class="item-avatar" style="background:var(--surface-2)">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12 19.79 19.79 0 0 1 1.93 3.4 2 2 0 0 1 3.92 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9a16 16 0 0 0 6.91 6.91l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 23 17z"/></svg>
+      <div class="item-avatar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12 19.79 19.79 0 0 1 1.93 3.4 2 2 0 0 1 3.92 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9a16 16 0 0 0 6.91 6.91l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 23 17z"/></svg>
       </div>
       <div class="item-body">
-        <div class="item-title">${esc(f.phonenumber)}</div>
-        <div class="item-sub">Today · ${badgeHtml(f.status)}</div>
+        <div class="item-title">${esc(title)}</div>
+        <div class="item-sub">${sub}</div>
       </div>
+      <div class="item-right">${callBtn}</div>
     </div>`;
 }
 

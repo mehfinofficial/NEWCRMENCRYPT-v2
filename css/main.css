@@ -685,6 +685,41 @@ box-shadow: var(--shadow-sm);
 /* ========================
    MONTH SUMMARY CARD
    ======================== */
+.res-rate-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.res-rate-card__ring {
+  flex-shrink: 0;
+}
+
+.res-rate-card__pct {
+  font-family: 'Manrope', sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+  fill: var(--text-primary);
+}
+
+.res-rate-card__title {
+  font-family: 'Manrope', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.res-rate-card__sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 3px;
+}
+
 .month-summary {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -796,6 +831,13 @@ box-shadow: var(--shadow-sm);
   font-family: 'DM Sans', sans-serif;
   padding: 4px 0;
 }
+
+/* Dashboard-only spacing: gap between "Upcoming Renewals" / "Follow-up
+   Today" headers and their card lists. Scoped to the dashboard's right
+   panel so it doesn't touch .section-header/.card-list on other pages
+   (Clients, Records, Follow-ups) which reuse the same classes. */
+#page-dashboard .dash-right-panel .section-header { margin-bottom: 10px; }
+#page-dashboard .dash-right-panel .section-header + .card-list { margin-top: 4px; }
 
 /* ========================
    CARD LIST / ITEMS

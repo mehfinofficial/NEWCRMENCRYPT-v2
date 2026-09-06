@@ -57,6 +57,23 @@ $s->execute([$weekStart]); $recordsThisWeek = (int)$s->fetchColumn();
 $s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE transdate BETWEEN ? AND ?");
 $s->execute([$lastWeekStart, $lastWeekEnd]); $recordsLastWeek = (int)$s->fetchColumn();
 
+// Resolution rate: of the queries opened this week (excludes the
+// servicetype='payment' rows Add Transaction creates, same as Records list),
+// how many are already marked done.
+$s = $pdo->prepare("
+    SELECT
+        COUNT(*) AS opened,
+        SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) AS resolved
+    FROM transactions
+    WHERE transdate >= ?
+      AND (servicetype IS NULL OR servicetype != 'payment')
+");
+$s->execute([$weekStart]);
+$resRow = $s->fetch();
+$queriesOpened   = (int)($resRow['opened'] ?? 0);
+$queriesResolved = (int)($resRow['resolved'] ?? 0);
+$resolutionRate  = $queriesOpened > 0 ? (int)round(($queriesResolved / $queriesOpened) * 100) : 0;
+
 // Expired
 $s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE renewaldate < ? AND renewaldate != '' AND renewaldate IS NOT NULL AND servicetype = 'renewal'");
 $s->execute([$today]); $expired = (int)$s->fetchColumn();
@@ -70,21 +87,25 @@ $s->execute([$today, $future]); $expiring = (int)$s->fetchColumn();
 $s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE renewaldate BETWEEN ? AND ? AND renewaldate != '' AND renewaldate IS NOT NULL AND servicetype = 'renewal'");
 $s->execute([$lastWeekStart, date('Y-m-d', strtotime($lastWeekEnd . ' +15 days'))]); $expiringLastWeek = (int)$s->fetchColumn();
 
-// Upcoming renewals (next 30 days)
-$future30 = date('Y-m-d', strtotime('+30 days'));
+// Upcoming renewals (next 7 days) — pulled from clients.renewal_date, the
+// same source the FAB "Upcoming Renewals" list uses, instead of the
+// transactions table (which only has a row once a renewal has actually been
+// logged and was why this list showed empty while the FAB version worked).
+$weekAhead = date('Y-m-d', strtotime('+7 days'));
 $upcomingStmt = $pdo->prepare("
-    SELECT account, servicename, renewaldate
-    FROM transactions
-    WHERE renewaldate BETWEEN ? AND ?
-    ORDER BY renewaldate ASC
+    SELECT id, clientname, firmname, renewal_date
+    FROM clients
+    WHERE renewal_date IS NOT NULL AND renewal_date != ''
+      AND renewal_date BETWEEN ? AND ?
+    ORDER BY renewal_date ASC
     LIMIT 10
 ");
-$upcomingStmt->execute([$today, $future30]);
+$upcomingStmt->execute([$today, $weekAhead]);
 $upcoming = $upcomingStmt->fetchAll();
 
 // Follow-ups today
 $followStmt = $pdo->prepare("
-    SELECT id, phonenumber, reminderdate, status
+    SELECT id, phonenumber, clientname, type, reminderdate, status
     FROM followup
     WHERE reminderdate = ? AND status = 'pending'
     LIMIT 10
@@ -120,6 +141,11 @@ jsonOut([
     'userid'            => $userid,
     'total_clients'     => $totalClients,
     'total_records'     => $totalRecords,
+    'resolution_rate' => [
+        'pct'      => $resolutionRate,
+        'resolved' => $queriesResolved,
+        'opened'   => $queriesOpened,
+    ],
     'expired'           => $expired,
     'expiring_soon'     => $expiring,
     'upcoming_renewals' => $upcoming,

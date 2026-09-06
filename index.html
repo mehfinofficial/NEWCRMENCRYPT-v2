@@ -191,6 +191,29 @@
           </div>
         </div>
 
+        <!-- Resolution Rate -->
+        <div class="res-rate-card" id="resRateCard">
+          <svg width="64" height="64" viewBox="0 0 64 64" class="res-rate-card__ring">
+            <defs>
+              <linearGradient id="resRateGradient" gradientUnits="userSpaceOnUse"
+                              x1="32" y1="6" x2="32" y2="58" gradientTransform="rotate(90 32 32)">
+                <stop offset="0%" style="stop-color:#5aa8f5"></stop>
+                <stop offset="100%" style="stop-color:var(--accent)"></stop>
+              </linearGradient>
+            </defs>
+            <circle cx="32" cy="32" r="26" fill="none" stroke="var(--border)" stroke-width="8"></circle>
+            <circle cx="32" cy="32" r="26" fill="none" stroke="url(#resRateGradient)" stroke-width="8"
+                    stroke-linecap="round" transform="rotate(-90 32 32)"
+                    stroke-dasharray="163.4" stroke-dashoffset="163.4"
+                    id="resRateArc"></circle>
+            <text x="32" y="37" text-anchor="middle" class="res-rate-card__pct" id="resRatePct">—</text>
+          </svg>
+          <div class="res-rate-card__info">
+            <div class="res-rate-card__title">Resolution rate</div>
+            <div class="res-rate-card__sub" id="resRateSub">Loading...</div>
+          </div>
+        </div>
+
         <!-- Month Summary -->
         <div style="display: none;" class="month-summary" id="monthSummary">
           <div class="month-summary__title" id="monthSummaryTitle">This Month</div>
@@ -237,7 +260,7 @@
           <!-- Upcoming Renewals -->
           <div class="section-header">
             <h3 class="section-title">Upcoming Renewals</h3>
-            <button class="text-btn" onclick="navigateQueries('records')">View All</button>
+            <button class="text-btn" onclick="openRenewalsList()">View All</button>
           </div>
           <div class="card-list" id="upcomingRenewals">
             <div class="empty-state">Loading...</div>
