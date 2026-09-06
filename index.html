@@ -689,14 +689,17 @@
 
         <!-- NEW group -->
         <div id="f_grp_new" style="display:flex;flex-direction:column;gap:12px;">
-          <div class="form-group"><label>Phone Number *</label><input type="tel" id="f_phone_new" placeholder="+91 XXXXX XXXXX" /></div>
+          <div class="form-group"><label>Phone Number *</label><input type="tel" id="f_phone_new" placeholder="+91" /></div>
           <div class="form-group"><label>Note</label><textarea id="f_note_new" rows="2" placeholder="What's this follow-up about?" style="resize:vertical;font-family:inherit;font-size:14px;padding:10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text-primary);width:100%;box-sizing:border-box;"></textarea></div>
         </div>
 
         <!-- CLIENT group -->
         <div id="f_grp_client" style="display:none;flex-direction:column;gap:12px;">
-          <div class="form-group"><label>Client *</label>
-            <select id="f_client" onchange="onFollowupClientSelect()"><option value="">Select client...</option></select>
+          <div class="form-group" style="position:relative;"><label>Client *</label>
+            <input type="text" id="f_client_search" placeholder="Type client or firm name..." autocomplete="off"
+                   oninput="filterFollowupClientSuggestions()" onfocus="filterFollowupClientSuggestions()" />
+            <input type="hidden" id="f_client" />
+            <div id="f_client_suggestions" class="autocomplete-list"></div>
           </div>
           <div class="form-group"><label>Phone Number *</label><input type="tel" id="f_phone" placeholder="Auto-filled from client" /></div>
           <div class="form-group"><label>Note</label><textarea id="f_note_client" rows="2" placeholder="What's this follow-up about?" style="resize:vertical;font-family:inherit;font-size:14px;padding:10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--surface);color:var(--text-primary);width:100%;box-sizing:border-box;"></textarea></div>

@@ -1512,26 +1512,70 @@ let _followupClients = [];
 
 // When client selected — autofill phone (editable)
 function onFollowupClientSelect() {
-  const sel = document.getElementById('f_client');
-  const source = allClients.length ? allClients : _followupClients;
-  const client = source.find(c => c.clientname === sel.value);
+  const source = _followupClients.length ? _followupClients : allClients;
+  const client = source.find(c => c.clientname === document.getElementById('f_client').value);
   if (client) {
     document.getElementById('f_phone').value = client.contact || client.whatsapp || '';
   }
 }
 
-// Populate client dropdown in followup modal (separate from records)
+// Load clients for the followup modal's autocomplete (separate cache from records)
 async function populateFollowupClientSelect() {
-  const sel = document.getElementById('f_client');
-  if (sel.options.length > 1) return; // already loaded
+  if (_followupClients.length) return; // already loaded
   try {
     const data = await API.getClients();
     _followupClients = data.clients || [];
-    _followupClients.forEach(c => {
-      sel.add(new Option(c.clientname + (c.firmname ? ` (${c.firmname})` : ''), c.clientname));
-    });
   } catch(e) {}
 }
+
+// Client autocomplete for the Add Follow-up "Client" field — same
+// type-to-search pattern used on the Add Record "Account" field.
+function filterFollowupClientSuggestions() {
+  const input = document.getElementById('f_client_search');
+  const box   = document.getElementById('f_client_suggestions');
+  const term  = input.value.trim().toLowerCase();
+
+  const source = _followupClients.length ? _followupClients : allClients;
+
+  const matches = term
+    ? source.filter(c =>
+        (c.firmname || '').toLowerCase().includes(term) ||
+        (c.clientname || '').toLowerCase().includes(term)
+      ).slice(0, 8)
+    : source.slice(0, 8);
+
+  if (!matches.length) {
+    box.innerHTML = '<div class="autocomplete-empty">No matching clients</div>';
+    box.style.display = 'block';
+    return;
+  }
+
+  box.innerHTML = matches.map(c => `
+    <div class="autocomplete-item" onclick="selectFollowupClientSuggestion('${esc(c.clientname).replace(/'/g, "\\'")}')">
+      ${esc(c.firmname || c.clientname)}
+      ${c.firmname ? `<span class="ac-sub">${esc(c.clientname)}</span>` : ''}
+    </div>
+  `).join('');
+  box.style.display = 'block';
+}
+
+function selectFollowupClientSuggestion(clientname) {
+  const source = _followupClients.length ? _followupClients : allClients;
+  const client = source.find(c => c.clientname === clientname);
+  document.getElementById('f_client').value = clientname;
+  document.getElementById('f_client_search').value = client ? (client.firmname || client.clientname) : clientname;
+  document.getElementById('f_client_suggestions').style.display = 'none';
+  onFollowupClientSelect();
+}
+
+document.addEventListener('click', (e) => {
+  const wrap = document.getElementById('f_client_search');
+  const box  = document.getElementById('f_client_suggestions');
+  if (!wrap || !box) return;
+  if (e.target !== wrap && !box.contains(e.target)) {
+    box.style.display = 'none';
+  }
+});
 
 async function saveFollowup() {
   const reminderdate = document.getElementById('f_date').value;
@@ -1569,7 +1613,9 @@ function resetFollowupForm() {
   document.getElementById('f_tab_client').classList.remove('active');
   document.getElementById('f_grp_client').style.display = 'none';
   document.getElementById('f_grp_new').style.display    = 'flex';
-  document.getElementById('f_client').value      = '';
+  document.getElementById('f_client').value        = '';
+  document.getElementById('f_client_search').value = '';
+  document.getElementById('f_client_suggestions').style.display = 'none';
   document.getElementById('f_phone').value       = '';
   document.getElementById('f_note_client').value = '';
   document.getElementById('f_phone_new').value   = '';
