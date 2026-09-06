@@ -965,14 +965,16 @@ box-shadow: var(--shadow-sm);
 .badge-active  { background: var(--accent-bg); color: var(--accent-dark); }
 .badge-expired { background: #fef2f2; color: #dc2626; }
 .badge-expiring{ background: #fffbeb; color: #b45309; }
-.badge-pending { background: #eff6ff; color: #1d4ed8; }
-.badge-done    { background: var(--accent-bg); color: var(--accent-dark); }
-.badge-overdue { background: #fef2f2; color: #dc2626; }
+.badge-pending   { background: #eff6ff; color: #1d4ed8; }
+.badge-done      { background: var(--accent-bg); color: var(--accent-dark); }
+.badge-overdue   { background: #fef2f2; color: #dc2626; }
+.badge-cancelled { background: #f3f4f6; color: #6b7280; }
 
 [data-theme="dark"] .badge-expired  { background: #3b1111; color: #fca5a5; }
 [data-theme="dark"] .badge-expiring { background: #3b2a00; color: #fcd34d; }
 [data-theme="dark"] .badge-pending  { background: #1e3a5f; color: #93c5fd; }
 [data-theme="dark"] .badge-overdue  { background: #3b1111; color: #fca5a5; }
+[data-theme="dark"] .badge-cancelled { background: #374151; color: #d1d5db; }
 
 /* Avatar states */
 .item-avatar--inactive {
@@ -1384,6 +1386,13 @@ box-shadow: var(--shadow-sm);
   color: var(--text-secondary);
 }
 .btn-ghost:hover { background: var(--border); }
+.btn-danger {
+  background: #fef2f2;
+  color: var(--danger);
+}
+.btn-danger:hover { background: #fee2e2; }
+[data-theme="dark"] .btn-danger { background: #3b1111; color: #fca5a5; }
+[data-theme="dark"] .btn-danger:hover { background: #4a1414; }
 
 /* ========================
    TOAST

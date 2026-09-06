@@ -1367,6 +1367,16 @@ async function markFollowupDone(id) {
   try {
     await API.updateFollowup({ id, status: 'done' });
     showToast('Marked as complete');
+    closeModal('followupDetailModal');
+    loadFollowups();
+  } catch(e) { showToast('Failed to update'); }
+}
+
+async function markFollowupCancelled(id) {
+  try {
+    await API.updateFollowup({ id, status: 'cancelled' });
+    showToast('Follow-up cancelled');
+    closeModal('followupDetailModal');
     loadFollowups();
   } catch(e) { showToast('Failed to update'); }
 }
@@ -1447,13 +1457,15 @@ function openFollowupDetail(f) {
   `;
  
   /* ── Footer ── */
+  // Pending (including overdue, which is still status 'pending' under the
+  // hood) gets the full action set: Cancel, Complete, then Back. Anything
+  // already resolved (done/cancelled) just gets a Back button.
   const footer = document.getElementById('frdm-footer');
   footer.innerHTML = status === 'pending'
-    ? `<button class="btn btn-ghost" onclick="closeModal('followupDetailModal')">Close</button>
-       <button class="btn btn-primary" onclick="markFollowupDone(${f.id})">
-        Mark Complete
-       </button>`
-    : `<button class="btn btn-ghost" style="flex:1" onclick="closeModal('followupDetailModal')">Close</button>`;
+    ? `<button class="btn btn-danger" style="flex:1" onclick="markFollowupCancelled(${f.id})">Cancelled</button>
+       <button class="btn btn-primary" style="flex:1" onclick="markFollowupDone(${f.id})">Complete</button>
+       <button class="btn btn-ghost" style="flex:1" onclick="closeModal('followupDetailModal')">Back</button>`
+    : `<button class="btn btn-ghost" style="flex:1" onclick="closeModal('followupDetailModal')">Back</button>`;
  
   openModal('followupDetailModal');
 }
@@ -2072,6 +2084,16 @@ function openRenewalDetail(id) {
       </div>` : ''}
     </div>
   `;
+
+  const rawPhone = (c.contact || '').replace(/\D/g, '');
+  const footer = document.getElementById('renewalDetailFooter');
+  footer.innerHTML = `
+    ${rawPhone
+      ? `<a class="btn btn-ghost" style="flex:1;text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center;" href="tel:${rawPhone}">Call</a>`
+      : ''}
+    <button class="btn btn-primary" style="flex:1" onclick="sendRenewalReminderFromDetail()">Send Reminder</button>
+    <button class="btn btn-ghost" style="flex:1" onclick="closeModal('renewalDetailModal')">Close</button>`;
+
   openModal('renewalDetailModal');
 }
 
@@ -2738,6 +2760,22 @@ const RECORD_TYPE_DEFAULT = {
 // attribute and lets arbitrary HTML/JS run for anyone who views that list.
 // Passing a plain integer id sidesteps that entirely — there's no user
 // text in the attribute to escape.
+// Shortcut from the record detail popup straight into Quick Message,
+// pre-filled with this record's client (mirrors sendRenewalReminderFromDetail).
+async function sendRecordMessageFromDetail(clientname) {
+  closeModal('recordDetailModal');
+  openModal('quickMessageModal');
+
+  await populateQuickMessageClients();
+  await populateQuickMessageTemplates();
+
+  const source = _qmClients.length ? _qmClients : allClients;
+  const c = source.find(cl => cl.clientname === clientname);
+
+  document.getElementById('qm_account').value = clientname;
+  document.getElementById('qm_account_search').value = c ? (c.firmname || c.clientname) : clientname;
+}
+
 function openRecordDetailById(id)   { const r = allRecords.find(x => x.id === id);   if (r) openRecordDetail(r); }
 function openFollowupDetailById(id) { const f = allFollowups.find(x => x.id === id); if (f) openFollowupDetail(f); }
 function openClientDetailById(id)   { const c = allClients.find(x => x.id === id);   if (c) openClientDetail(c); }
@@ -2808,19 +2846,10 @@ function openRecordDetail(r) {
   /* ── Footer ── */
   const footer = document.getElementById('rdm-footer');
   if (status === 'pending') {
-    const client = allClients.find(c => c.clientname === r.account);
-    const phone  = (client?.contact || client?.whatsapp || '').replace(/\D/g, '');
-    const callBtnHtml = phone
-      ? `<a class="btn btn-ghost" href="tel:${phone}" style="text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12 19.79 19.79 0 0 1 1.93 3.4 2 2 0 0 1 3.92 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9a16 16 0 0 0 6.91 6.91l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 23 17z"/></svg>Call
-        </a>`
-      : '';
     footer.innerHTML = `
-      <button class="btn btn-ghost" onclick="closeModal('recordDetailModal')">Close</button>
-      ${callBtnHtml}
-      <button class="btn btn-primary" onclick="markRecordDone(${r.id})">
-         Mark as Done
-      </button>`;
+      <button class="btn btn-ghost" style="flex:1" onclick="sendRecordMessageFromDetail('${esc(r.account).replace(/'/g, "\\'")}')">Message</button>
+      <button class="btn btn-primary" style="flex:1" onclick="markRecordDone(${r.id})">Mark Done</button>
+      <button class="btn btn-ghost" style="flex:1" onclick="closeModal('recordDetailModal')">Close</button>`;
   } else {
     footer.innerHTML = `<button class="btn btn-ghost" style="flex:1" onclick="closeModal('recordDetailModal')">Close</button>`;
   }
@@ -2996,6 +3025,18 @@ document.addEventListener('keydown', e => {
   // Show login screen underneath the splash while we check auth
   showLoginScreen();
 
+  // Warm up allClients in parallel with the auth check, not after it. It's
+  // used for the record-row call icon, follow-up client picker, and quick
+  // message autocomplete — all of which used to only get populated whenever
+  // the user happened to visit the Clients page first. Kicking it off here,
+  // alongside auth, means it's ready by the time the splash (min 3s) lifts,
+  // so those icons/pickers are correct on the very first render instead of
+  // popping in later once something else finally called loadClients().
+  const clientsWarmup = fetch('api/clients.php?search=', { credentials: 'include' })
+    .then(res => res.json())
+    .then(data => { allClients = data.clients || []; })
+    .catch(() => {}); // non-fatal — pages that need it will still lazy-load as before
+
   // ── Auth check — splash now dismisses only once this actually resolves ──
   try {
     const res  = await fetch('api/auth.php?action=check', { credentials: 'include' });
@@ -3007,6 +3048,7 @@ document.addEventListener('keydown', e => {
       document.getElementById('f_date').value = localDateStr();
       document.getElementById('r_transdate').value = localDateStr();
       onFollowupTypeToggle('new');
+      await clientsWarmup;
       navigate('dashboard');
       startPolling();
     } else {

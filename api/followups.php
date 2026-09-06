@@ -23,8 +23,9 @@ if ($method === 'GET') {
         $where[] = "(phonenumber LIKE ? OR clientname LIKE ? OR note LIKE ?)";
         $params = array_merge($params, [$like, $like, $like]);
     }
-    if ($filter === 'pending') { $where[] = "status = 'pending'"; }
-    if ($filter === 'done')    { $where[] = "status = 'done'"; }
+    if ($filter === 'pending')   { $where[] = "status = 'pending'"; }
+    if ($filter === 'done')      { $where[] = "status = 'done'"; }
+    if ($filter === 'cancelled') { $where[] = "status = 'cancelled'"; }
     if ($filter === 'clients') { $where[] = "type = 'client'"; }
     if ($filter === 'leads')   { $where[] = "is_lead = 1"; }
 
@@ -35,11 +36,13 @@ if ($method === 'GET') {
     $total = (int)$countStmt->fetchColumn();
 
     // Pending follow-ups first (oldest reminder date first, so overdue ones
-    // surface at the very top, then today, then upcoming), completed ones
-    // last. Plain "reminderdate DESC" used to bury overdue items at the
-    // bottom of the list under future-dated pending ones.
+    // surface at the very top, then today, then upcoming), resolved ones
+    // (done or cancelled) last. Plain "reminderdate DESC" used to bury
+    // overdue items at the bottom of the list under future-dated pending
+    // ones. Keyed off "!= pending" rather than "= done" so cancelled
+    // follow-ups also sink to the bottom instead of mixing in with pending.
     $sql  = "SELECT * FROM followup" . $whereSql . "
-             ORDER BY (status = 'done') ASC, reminderdate ASC
+             ORDER BY (status != 'pending') ASC, reminderdate ASC
              LIMIT ? OFFSET ?";
     $stmt = $pdo->prepare($sql);
     $i = 1;
