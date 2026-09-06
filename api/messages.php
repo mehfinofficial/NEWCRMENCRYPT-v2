@@ -57,8 +57,10 @@ if ($method === 'POST') {
         if (!$name || !$text) jsonOut(['error' => 'Name and message body are required'], 400);
         $stmt = $pdo->prepare("INSERT INTO message_templates (name, body) VALUES (?, ?)");
         $stmt->execute([$name, $text]);
+        // Capture before logAction()'s own INSERT (into `logs`) clobbers lastInsertId().
+        $newTemplateId = $pdo->lastInsertId();
         logAction($pdo, "Message template added: $name");
-        jsonOut(['success' => true, 'id' => $pdo->lastInsertId()]);
+        jsonOut(['success' => true, 'id' => $newTemplateId]);
     }
 
     if ($action === 'update_template') {

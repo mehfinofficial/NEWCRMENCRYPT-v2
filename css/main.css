@@ -865,6 +865,7 @@ box-shadow: var(--shadow-sm);
 .list-item:active { transform: scale(.985); }
 
 .item-avatar {
+  position: relative;
   width: 42px; height: 42px;
   border-radius: 12px;
   background: var(--accent-bg);
@@ -874,6 +875,23 @@ box-shadow: var(--shadow-sm);
   font-size: 15px; font-weight: 700;
   flex-shrink: 0;
 }
+
+/* Small corner badge marking a record that has attached files —
+   sits on the item-avatar like a notification dot, doesn't take up
+   any row width so it never competes with the title/status text. */
+.item-avatar-file-badge {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  width: 17px; height: 17px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--surface);
+  display: grid; place-items: center;
+  color: #fff;
+  line-height: 0;
+}
+.item-avatar-file-badge svg { width: 9px; height: 9px; }
 
 .item-body { flex: 1; min-width: 0; }
 .item-title {

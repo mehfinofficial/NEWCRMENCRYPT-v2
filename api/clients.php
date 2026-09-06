@@ -132,8 +132,11 @@ if ($method === 'POST') {
             ':software_version'  => $body['software_version']  ?? null,
             ':created_at'        => date('Y-m-d H:i:s'),
         ]);
+        // Capture the id before logAction() (its own INSERT into `logs`
+        // would otherwise clobber lastInsertId() with the wrong row's id).
+        $newClientId = $pdo->lastInsertId();
         logAction($pdo, "New client added: " . ($body['firmname'] ?? $body['clientname'] ?? ''));
-        jsonOut(['success' => true, 'id' => $pdo->lastInsertId()]);
+        jsonOut(['success' => true, 'id' => $newClientId]);
     }
 
     if ($action === 'update_status') {

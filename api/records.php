@@ -68,7 +68,8 @@ if ($method === 'GET') {
         $typeTotalsStmt->execute($params);
         $typeTotals = $typeTotalsStmt->fetchAll();
 
-        $sql  = "SELECT * FROM transactions" . $whereSql . " ORDER BY transdate DESC, id DESC LIMIT ? OFFSET ?";
+        $sql  = "SELECT t.*, (SELECT COUNT(*) FROM files f WHERE f.record_id = t.id) AS file_count
+                 FROM transactions t" . $whereSql . " ORDER BY t.transdate DESC, t.id DESC LIMIT ? OFFSET ?";
         $stmt = $pdo->prepare($sql);
         $i = 1;
         foreach ($params as $val) { $stmt->bindValue($i++, $val); }
@@ -121,7 +122,8 @@ if ($method === 'GET') {
     $countStmt->execute($params);
     $total = (int)$countStmt->fetchColumn();
 
-    $sql  = "SELECT * FROM transactions" . $whereSql . " ORDER BY transdate DESC, id DESC LIMIT ? OFFSET ?";
+    $sql  = "SELECT t.*, (SELECT COUNT(*) FROM files f WHERE f.record_id = t.id) AS file_count
+             FROM transactions t" . $whereSql . " ORDER BY t.transdate DESC, t.id DESC LIMIT ? OFFSET ?";
     $stmt = $pdo->prepare($sql);
     $i = 1;
     foreach ($params as $val) { $stmt->bindValue($i++, $val); }
@@ -193,6 +195,10 @@ if ($method === 'POST') {
                 ':userid'         => $userid,
                 ':created_at'     => date('Y-m-d H:i:s'),
             ]);
+            // Capture the new record's id immediately — logAction() below does
+            // its own INSERT (into `logs`), which would otherwise overwrite
+            // lastInsertId() with the logs row's id instead of this record's.
+            $newRecordId = $pdo->lastInsertId();
 
             if ($newSystemid && strtolower($servicetype) === 'system change') {
                 $pdo->prepare("UPDATE clients SET system_id = ? WHERE clientname = ?")
@@ -211,7 +217,7 @@ if ($method === 'POST') {
             $logFirm = $logClient->fetchColumn() ?: ($body['account'] ?? '');
 
             logAction($pdo, "Record added: {$servicename} for " . $logFirm);
-            jsonOut(['success' => true, 'id' => $pdo->lastInsertId(), 'transid' => $transid]);
+            jsonOut(['success' => true, 'id' => $newRecordId, 'transid' => $transid]);
 
         } catch (Throwable $e) {
             // Log the real error server-side for debugging...
@@ -267,13 +273,16 @@ if ($method === 'POST') {
                 ':userid'         => $userid,
                 ':created_at'     => date('Y-m-d H:i:s'),
             ]);
+            // Same lastInsertId()-clobbering issue as the 'add' action above —
+            // capture it before logAction() runs its own INSERT.
+            $newPaymentId = $pdo->lastInsertId();
 
             $logClient = $pdo->prepare("SELECT firmname FROM clients WHERE clientname = ?");
             $logClient->execute([$account]);
             $logFirm = $logClient->fetchColumn() ?: $account;
 
             logAction($pdo, "Payment of " . number_format($paymentAmount, 2) . " recorded for " . $logFirm);
-            jsonOut(['success' => true, 'id' => $pdo->lastInsertId(), 'transid' => $transid]);
+            jsonOut(['success' => true, 'id' => $newPaymentId, 'transid' => $transid]);
 
         } catch (Throwable $e) {
             error_log('[records.php add_payment] ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());

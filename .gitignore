@@ -4,3 +4,10 @@ data/encryption.key
 *.rar
 *.sqlite
 *.sqlite3
+
+# Uploaded client files — actual content shouldn't be in version control
+# (could contain sensitive client documents). Keep the folder itself and
+# its access-lockdown .htaccess tracked, just ignore what's inside it.
+data/uploads/*
+!data/uploads/.htaccess
+!data/uploads/.gitkeep

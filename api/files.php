@@ -122,9 +122,11 @@ if ($method === 'GET') {
     }
     $whereSql = $where ? (" WHERE " . implode(' AND ', $where)) : '';
     $stmt = $pdo->prepare("
-        SELECT f.id, f.original_name, f.filesize, f.account, f.created_at, c.firmname
+        SELECT f.id, f.original_name, f.filesize, f.account, f.created_at, f.record_id,
+               c.firmname, t.transid, t.servicename
         FROM files f
         LEFT JOIN clients c ON c.clientname = f.account
+        LEFT JOIN transactions t ON t.id = f.record_id
         $whereSql
         ORDER BY f.created_at DESC
     ");
