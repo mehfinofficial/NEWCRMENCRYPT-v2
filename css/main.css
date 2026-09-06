@@ -2130,6 +2130,54 @@ box-shadow: var(--shadow-sm);
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 30%, transparent);
 }
+
+/* Files section on a Record Detail modal — full clickable rows instead
+   of a small pill, so it's obvious each one opens the File Detail modal. */
+.rdm-files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rdm-file-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+@media (min-width: 768px) {.rdm-file-row:hover {
+  background: var(--accent-bg);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}}
+
+.rdm-file-row:active { transform: scale(.985); }
+.rdm-file-icon {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--accent);
+  display: grid; place-items: center;
+  flex-shrink: 0;
+}
+.rdm-file-info { flex: 1; min-width: 0; }
+.rdm-file-name {
+  font-size: 13px; font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rdm-file-meta {
+  font-size: 11px; color: var(--text-secondary);
+  margin-top: 2px;
+}
+.rdm-file-chevron {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
 /* ========================
    DATE PICKER CHIP
    ======================== */

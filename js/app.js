@@ -372,11 +372,22 @@ function showToast(msg, duration = 2500) {
 }
 
 /* ---- MODALS ---- */
+// Modals stack arbitrarily deep (e.g. Client Detail → Record Detail →
+// File Detail), but every .modal-overlay shares the same base z-index in
+// CSS, so without this the *last one in the HTML source* would always
+// render on top regardless of open order. Bumping z-index on every open
+// keeps whichever modal was opened most recently on top, no matter how
+// many are stacked underneath it.
+let _modalZCounter = 200;
 function openModal(id) {
-  document.getElementById(id).classList.add('open');
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.zIndex = ++_modalZCounter;
+  el.classList.add('open');
 }
 function closeModal(id) {
-  document.getElementById(id).classList.remove('open');
+  const el = document.getElementById(id);
+  if (el) { el.classList.remove('open'); el.style.zIndex = ''; }
   if (id === 'addRecordModal')   resetRecordForm();
   if (id === 'addClientModal')   resetClientForm();
   if (id === 'addFollowupModal') resetFollowupForm();
@@ -2640,7 +2651,10 @@ async function generateFileLinkFor(id) {
   }
 }
 
-// Loads and renders the "Files" pill row inside a Record Detail modal.
+// Loads and renders the "Files" section inside a Record Detail modal as
+// full clickable rows (icon + name + size, chevron to hint it opens the
+// File Detail modal) — matches the File Manager's row style instead of
+// a small pill, so it reads clearly as tappable.
 // Hides the whole section when the record has no attached files.
 async function loadRecordFiles(recordId) {
   const section = document.getElementById('rdm-files-section');
@@ -2652,9 +2666,16 @@ async function loadRecordFiles(recordId) {
     if (!files.length) { section.style.display = 'none'; return; }
     section.style.display = 'block';
     list.innerHTML = files.map(f => `
-      <span class="rdm-pill rdm-pill--file" onclick='openFileDetailById(${JSON.stringify(f.id)})'>
-        📎 ${esc(f.original_name)}
-      </span>
+      <div class="rdm-file-row" onclick='openFileDetailById(${JSON.stringify(f.id)})'>
+        <div class="rdm-file-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+        </div>
+        <div class="rdm-file-info">
+          <div class="rdm-file-name">${esc(f.original_name)}</div>
+          <div class="rdm-file-meta">${formatFileSize(f.filesize)}${f.created_at ? ' · ' + formatDate(f.created_at) : ''}</div>
+        </div>
+        <svg class="rdm-file-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>
     `).join('');
   } catch (e) {
     section.style.display = 'none';
@@ -2861,7 +2882,7 @@ function openRecordDetail(r) {
     <!-- Files attached to this record — filled in by loadRecordFiles() below -->
     <div class="rdm-section" id="rdm-files-section" style="display:none;">
       <div class="rdm-section-title">Files</div>
-      <div id="rdm-files-list" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+      <div id="rdm-files-list" class="rdm-files-list"></div>
     </div>
  
   `;
