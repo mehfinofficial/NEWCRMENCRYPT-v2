@@ -64,6 +64,18 @@ function daysFromToday(dateStr) {
   return Math.round((dayDate(dateStr) - dayDate(todayIST())) / 86400000);
 }
 
+// Human-friendly day label for a reminder date — shared by the follow-up
+// detail modal and the dashboard "Follow-up Today" cards so both agree on
+// wording (Overdue / Today / Tomorrow / In N days).
+function urgencyLabel(dateStr) {
+  if (!dateStr) return null;
+  const diff = daysFromToday(dateStr);
+  if (diff < 0)   return 'Overdue';
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Tomorrow';
+  return `In ${diff} days`;
+}
+
 function _silentRefresh() {
   switch (currentPage) {
     case 'dashboard': loadDashboard();                                                  break;
@@ -1338,7 +1350,7 @@ function renderFollowups(followups) {
       </div>
       <div class="item-right">
         ${leadBadge}
-        ${badgeHtml(f.status)}
+        ${badgeHtml(followupDisplayStatus(f))}
       </div>
     </div>`;
   }, 'No follow-ups found', fetchMoreFollowups);
@@ -1363,6 +1375,9 @@ async function markFollowupDone(id) {
 function openFollowupDetail(f) {
   const isClient = f.type === 'client';
   const status   = f.status || 'pending';
+  // Raw status still drives the "Mark Complete" button (an overdue item is
+  // still pending, just late) — the badge shows the friendlier Overdue label.
+  const displayStatus = followupDisplayStatus(f);
   const isLead   = parseInt(f.is_lead) === 1;
  
   const displayName = isClient
@@ -1380,14 +1395,6 @@ function openFollowupDetail(f) {
   const callHref = rawPhone ? `tel:${rawPhone}` : null;
  
   /* ── Reminder urgency label ── */
-  function urgencyLabel(dateStr) {
-    if (!dateStr) return null;
-    const diff  = daysFromToday(dateStr);
-    if (diff < 0)   return 'Overdue';
-    if (diff === 0) return 'Today';
-    if (diff === 1) return 'Tomorrow';
-    return `In ${diff} days`;
-  }
   const urgency = urgencyLabel(f.reminderdate);
  
   /* ── Header ── */
@@ -1410,7 +1417,7 @@ function openFollowupDetail(f) {
           ${isLead ? `<span class="rdm-type-badge" style="--type-color:var(--warning)">
             Lead
           </span>` : ''}
-          ${badgeHtml(status)}
+          ${badgeHtml(displayStatus)}
         </div>
       </div>
     </div>
@@ -1573,8 +1580,17 @@ function esc(s) {
 }
 
 function badgeHtml(status) {
-  const map = { active: 'Active', expired: 'Expired', expiring: 'Expiring', pending: 'Pending', done: 'Complete', cancelled: 'Cancelled' };
+  const map = { active: 'Active', expired: 'Expired', expiring: 'Expiring', pending: 'Pending', done: 'Complete', cancelled: 'Cancelled', overdue: 'Overdue' };
   return `<span class="badge badge-${status}">${map[status] || status}</span>`;
+}
+
+// A follow-up's stored status is only ever 'pending' or 'done' — "overdue"
+// isn't a DB value, it's a pending follow-up whose reminder date has already
+// passed. This computes the label that should actually show on the pill,
+// without touching the underlying status used for filtering/actions.
+function followupDisplayStatus(f) {
+  if (f.status === 'pending' && daysFromToday(f.reminderdate) < 0) return 'overdue';
+  return f.status || 'pending';
 }
 
 function getRecordStatus(r) {
@@ -1613,8 +1629,12 @@ async function openRenewalDetailFromDashboard(id) {
 
 function followupItem(f) {
   const hasClient = f.type === 'client' && f.clientname;
+  // Client follow-ups show the client's name, never the raw phone number —
+  // phone stays available inside the detail modal / call button only.
   const title = hasClient ? f.clientname : f.phonenumber;
-  const sub   = hasClient ? `${esc(f.phonenumber)} · Today` : `Today · ${badgeHtml(f.status)}`;
+  const day   = urgencyLabel(f.reminderdate) || 'Today';
+  // Same "day · status pill" pattern for both client and non-client cards.
+  const sub   = `${esc(day)} · ${badgeHtml(followupDisplayStatus(f))}`;
   const phone = (f.phonenumber || '').replace(/\D/g, '');
   const callBtn = phone
     ? `<a class="item-call-btn" href="tel:${phone}" onclick="event.stopPropagation()" aria-label="Call">
@@ -1622,7 +1642,7 @@ function followupItem(f) {
       </a>`
     : '';
   return `
-    <div class="list-item" style="cursor:default">
+    <div class="list-item" style="cursor:pointer" onclick='openFollowupDetailFromDashboard(${JSON.stringify(f.id)})'>
       <div class="item-avatar">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12 19.79 19.79 0 0 1 1.93 3.4 2 2 0 0 1 3.92 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9a16 16 0 0 0 6.91 6.91l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 23 17z"/></svg>
       </div>
@@ -1632,6 +1652,18 @@ function followupItem(f) {
       </div>
       <div class="item-right">${callBtn}</div>
     </div>`;
+}
+
+// Dashboard's "Follow-up Today" cards are a lighter-weight fetch, so opening
+// the detail popup pulls the full follow-ups list first if it isn't already
+// loaded, then reuses the same modal the Queries > Follow-ups list uses.
+async function openFollowupDetailFromDashboard(id) {
+  let f = allFollowups.find(x => x.id === id);
+  if (!f) {
+    await loadFollowups();
+    f = allFollowups.find(x => x.id === id);
+  }
+  if (f) openFollowupDetail(f);
 }
 
 function clearForm(ids) {

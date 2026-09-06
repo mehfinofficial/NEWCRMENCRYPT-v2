@@ -967,10 +967,12 @@ box-shadow: var(--shadow-sm);
 .badge-expiring{ background: #fffbeb; color: #b45309; }
 .badge-pending { background: #eff6ff; color: #1d4ed8; }
 .badge-done    { background: var(--accent-bg); color: var(--accent-dark); }
+.badge-overdue { background: #fef2f2; color: #dc2626; }
 
 [data-theme="dark"] .badge-expired  { background: #3b1111; color: #fca5a5; }
 [data-theme="dark"] .badge-expiring { background: #3b2a00; color: #fcd34d; }
 [data-theme="dark"] .badge-pending  { background: #1e3a5f; color: #93c5fd; }
+[data-theme="dark"] .badge-overdue  { background: #3b1111; color: #fca5a5; }
 
 /* Avatar states */
 .item-avatar--inactive {

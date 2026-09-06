@@ -34,7 +34,13 @@ if ($method === 'GET') {
     $countStmt->execute($params);
     $total = (int)$countStmt->fetchColumn();
 
-    $sql  = "SELECT * FROM followup" . $whereSql . " ORDER BY reminderdate DESC LIMIT ? OFFSET ?";
+    // Pending follow-ups first (oldest reminder date first, so overdue ones
+    // surface at the very top, then today, then upcoming), completed ones
+    // last. Plain "reminderdate DESC" used to bury overdue items at the
+    // bottom of the list under future-dated pending ones.
+    $sql  = "SELECT * FROM followup" . $whereSql . "
+             ORDER BY (status = 'done') ASC, reminderdate ASC
+             LIMIT ? OFFSET ?";
     $stmt = $pdo->prepare($sql);
     $i = 1;
     foreach ($params as $val) { $stmt->bindValue($i++, $val); }
