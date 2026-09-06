@@ -506,17 +506,6 @@ async function loadDashboard() {
     // Resolution rate ring
     renderResolutionRate(data.resolution_rate || {});
 
-    // Stat pills
-    const t = data.trends || {};
-    document.getElementById('statPills').innerHTML =
-      statCard(iconPeople, data.total_clients ?? 0, 'Total Clients',   t.clients,  'green')  +
-      statCard(iconFile,   data.total_records ?? 0, 'Total Records',   t.records,  'blue')   +
-      statCard(iconAlert,  data.expired ?? 0,        'Expired',         t.expired,  'red')    +
-      statCard(iconClock,  data.expiring_soon ?? 0,  'Expiring Soon',   t.expiring, 'orange');
-
-    // Month summary
-    renderMonthSummary(data);
-
     // Upcoming renewals
     const renewalEl = document.getElementById('upcomingRenewals');
     if (data.upcoming_renewals?.length) {
@@ -608,50 +597,6 @@ function renderResolutionRate(res) {
     requestAnimationFrame(() => {
       arc.style.transition = 'stroke-dashoffset 0.6s cubic-bezier(.34,1.3,.64,1)';
       arc.setAttribute('stroke-dashoffset', offset);
-    });
-  });
-}
-
-function statCard(icon, value, label, trend, color) {
-  const t = trend || {};
-  const pct = t.pct;
-  const arrow = pct > 0 ? '↑' : pct < 0 ? '↓' : '→';
-  const trendText = (pct === null || pct === undefined) ? 'New' : pct === 0 ? 'No change' : `${arrow} ${Math.abs(pct)}%`;
-  const vsText = (pct === null || pct === undefined) ? '' : 'vs last week';
-  return `
-    <div class="stat-pill stat-pill--${color}">
-      <div class="stat-pill__glow"></div>
-      <div class="stat-pill__val">${value}</div>
-      <div class="stat-pill__label">${label}</div>
-      <div class="stat-pill__trend">
-        <span class="stat-pill__badge">${trendText}</span>
-        <span class="stat-pill__vs">${vsText}</span>
-      </div>
-    </div>`;
-}
-
-function renderMonthSummary(data) {
-  const now       = new Date();
-  const monthName = now.toLocaleDateString('en-IN', { month: 'long' });
-  const year      = now.getFullYear();
-  const ms        = data.month_stats || {};
-
-  const newClients = ms.new_clients ?? 0;
-  const renewals   = ms.renewals    ?? 0;
-  const due        = ms.due         ?? 0;
-  const expiring   = data.expiring_soon ?? 0;
-
-  const rate = due > 0 ? Math.round((renewals / due) * 100) : 0;
-
-  document.getElementById('monthSummaryTitle').textContent = `${monthName} ${year}`;
-  document.getElementById('ms_clients').textContent  = newClients;
-  document.getElementById('ms_renewals').textContent = renewals;
-  document.getElementById('ms_expiring').textContent = expiring;
-  document.getElementById('ms_barPct').textContent   = due > 0 ? `${rate}% of ${due} due` : 'No renewals due';
-
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      document.getElementById('ms_barFill').style.width = rate + '%';
     });
   });
 }
@@ -1759,10 +1704,6 @@ function clearForm(ids) {
   });
 }
 
-const iconPeople = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
-const iconFile   = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>`;
-const iconAlert  = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`;
-const iconClock  = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
 
 /* ========================
    SEARCH DEBOUNCE
