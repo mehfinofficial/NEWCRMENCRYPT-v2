@@ -858,7 +858,7 @@ async function loadClientLedger(clientname) {
     let records = [];
     let page = 1, hasMore = true;
     while (hasMore) {
-      const data = await API.getRecords({ search: clientname, page });
+      const data = await API.getRecords({ search: clientname, page, include_payments: 1 });
       records = records.concat((data.records || []).filter(r => r.account === clientname));
       hasMore = !!data.hasMore;
       page++;
@@ -870,19 +870,24 @@ async function loadClientLedger(clientname) {
     ledgerRecordsById = {};
     records.forEach(r => { ledgerRecordsById[r.id] = r; });
     el.innerHTML = records.map(r => {
+      const isPayment = (r.servicetype || '').toLowerCase() === 'payment';
       const statusBadge = badgeHtml(r.status || 'pending');
-      const summary = r.query || r.query_note || '';
+      const summary = r.query || r.query_note || r.payment_info || '';
       const sub = [timeAgo(r.transdate), summary].filter(Boolean).join(' · ');
+      const title = isPayment ? 'Payment' : (r.servicename || 'Record');
+      const rightHtml = isPayment && r.payment_amount
+        ? `<span style="font-weight:700;color:var(--success);">${formatCurrency(r.payment_amount)}</span>`
+        : statusBadge;
       return `
         <div class="list-item" style="cursor:pointer" onclick='openLedgerRecordById(${JSON.stringify(r.id)})'>
           <div class="item-avatar" style="background:var(--surface-2)">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
           </div>
           <div class="item-body">
-            <div class="item-title">${esc(r.servicename || 'Record')}</div>
+            <div class="item-title">${esc(title)}</div>
             <div class="item-sub">${esc(sub)}</div>
           </div>
-          <div class="item-right">${statusBadge}</div>
+          <div class="item-right">${rightHtml}</div>
         </div>`;
     }).join('');
   } catch (e) {

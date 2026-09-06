@@ -95,8 +95,10 @@ if ($method === 'GET') {
     // Direct payments (Add Transaction) are a plain money log, not an
     // operational query/service item, so they're excluded from the
     // general Records/Queries screen — Transaction History (above) is
-    // where they belong.
-    $where    = ["(servicetype IS NULL OR servicetype != 'payment')"];
+    // where they belong. The client ledger (client detail "History" tab)
+    // is the one exception: it wants a client's complete trail, payments
+    // included, so it passes include_payments=1 to opt back in.
+    $where    = !empty($_GET['include_payments']) ? [] : ["(servicetype IS NULL OR servicetype != 'payment')"];
     $params   = [];
 
     if ($search) {
