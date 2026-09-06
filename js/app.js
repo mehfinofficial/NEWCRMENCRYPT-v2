@@ -587,6 +587,12 @@ function renderResolutionRate(res) {
 
   const arc = document.getElementById('resRateArc');
   const offset = circumference - (circumference * pct / 100);
+
+  // Animate in exactly like the weekly bars: snap back to empty with no
+  // transition, then on the next frame transition up to the real value so
+  // the ring always grows in from zero instead of jumping straight there.
+  arc.style.transition = 'none';
+  arc.setAttribute('stroke-dashoffset', circumference);
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       arc.style.transition = 'stroke-dashoffset 0.6s cubic-bezier(.34,1.3,.64,1)';
