@@ -154,7 +154,11 @@ function getRolePermissionDefaults(string $role): array {
         ]);
     }
 
-    return $all; // unknown role → safest is full access, matches "admin" fallback used at login
+    // Unknown role → fail closed. Every real code path validates role
+    // against the 4-value enum before this is ever called (users.php on
+    // add/apply_role_preset), so this should be unreachable — but if it
+    // ever is, deny-all is the safe default, not full access.
+    return array_fill_keys(ALL_PERMISSION_KEYS, false);
 }
 
 // Auto-migrate: add role/permissions columns to `users`, and backfill any
