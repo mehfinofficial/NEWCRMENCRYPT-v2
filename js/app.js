@@ -436,7 +436,7 @@ function applyPermissionUI() {
 /* ---- PERMISSION DENIED / CONFIRM MODALS (generic, reused everywhere) ---- */
 function showPermissionDenied(message) {
   const msgEl = document.getElementById('permissionDeniedMessage');
-  if (msgEl) msgEl.textContent = message || "You don't have permission to do this. Contact an admin if you think this is a mistake.";
+  if (msgEl) msgEl.textContent = message || "You don't have permission to do this. Contact Customer Support for more Information.";
   openModal('permissionDeniedModal');
 }
 
