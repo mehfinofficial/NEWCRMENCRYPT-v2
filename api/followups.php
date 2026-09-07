@@ -7,16 +7,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { jsonOut([]); }
 
 $pdo = getDB();
 requireAuth($pdo);
+
+// Auto-migrate: soft-delete column, same 30-day-Archives pattern as clients
+// and transactions.
+try {
+    $cols = array_column($pdo->query("PRAGMA table_info(followup)")->fetchAll(), 'name');
+    if (!in_array('deleted_at', $cols)) {
+        $pdo->exec("ALTER TABLE followup ADD COLUMN deleted_at DATETIME DEFAULT NULL");
+    }
+} catch (Exception $e) {}
+
 $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method === 'GET') {
+    requirePermission($pdo, 'view_followups');
     $search   = trim($_GET['search'] ?? '');
     $filter   = $_GET['filter'] ?? 'all';
     $page     = max(1, (int)($_GET['page'] ?? 1));
     $pageSize = 100;
     $offset   = ($page - 1) * $pageSize;
     $params   = [];
-    $where    = [];
+    $where    = ["deleted_at IS NULL"];
 
     if ($search) {
         $like = "%$search%";
@@ -52,6 +63,17 @@ if ($method === 'GET') {
     $stmt->execute();
     $rows = $stmt->fetchAll();
 
+    // Mask phone numbers here (not in app.js) so a restricted user can't
+    // just read the field out of the network response — same reasoning as
+    // clients.php. Follow-up phones are stored in plain text (unlike
+    // client phones, which are encrypted at rest), but the masking rule
+    // is the same either way: strip the field server-side per permission.
+    $canViewPhone = getUserPermissions($pdo)['view_phone_followups'];
+    if (!$canViewPhone) {
+        foreach ($rows as &$r) { $r['phonenumber'] = null; }
+        unset($r);
+    }
+
     jsonOut([
         'followups' => $rows,
         'page'      => $page,
@@ -65,6 +87,7 @@ if ($method === 'POST') {
     $action = $body['action'] ?? '';
 
     if ($action === 'add') {
+        requirePermission($pdo, 'can_add_followup');
         $stmt = $pdo->prepare("
             INSERT INTO followup (phonenumber, reminderdate, status, type, clientname, note, is_lead)
             VALUES (:phonenumber, :reminderdate, :status, :type, :clientname, :note, :is_lead)
@@ -82,10 +105,66 @@ if ($method === 'POST') {
         jsonOut(['success' => true]);
     }
 
+    // Status-only change (Mark Complete / Cancelled buttons). Gated on
+    // can_edit_followup, same as the full edit below — changing a
+    // follow-up's state is an edit, so a role with editing disabled
+    // (Onsite/Viewer) can't do this either.
     if ($action === 'update') {
+        requirePermission($pdo, 'can_edit_followup');
+        $id = (int)($body['id'] ?? 0);
+        if (!$id) jsonOut(['error' => 'Invalid ID'], 400);
         $stmt = $pdo->prepare("UPDATE followup SET status = :status WHERE id = :id");
-        $stmt->execute([':status' => $body['status'], ':id' => (int)$body['id']]);
-        logAction($pdo, "Follow-up #" . $body['id'] . " marked as " . $body['status']);
+        $stmt->execute([':status' => $body['status'], ':id' => $id]);
+        logAction($pdo, "Follow-up #" . $id . " marked as " . $body['status']);
+        jsonOut(['success' => true]);
+    }
+
+    // Full edit — phone/note/date/type/lead, as opposed to 'update' above
+    // which only ever touches status.
+    if ($action === 'edit') {
+        requirePermission($pdo, 'can_edit_followup');
+        $id = (int)($body['id'] ?? 0);
+        if (!$id) jsonOut(['error' => 'Invalid ID'], 400);
+        $existingStmt = $pdo->prepare("SELECT * FROM followup WHERE id = ? AND deleted_at IS NULL");
+        $existingStmt->execute([$id]);
+        $existing = $existingStmt->fetch();
+        if (!$existing) jsonOut(['error' => 'Follow-up not found'], 404);
+
+        $stmt = $pdo->prepare("
+            UPDATE followup
+            SET phonenumber  = :phonenumber,
+                reminderdate = :reminderdate,
+                status       = :status,
+                type         = :type,
+                clientname   = :clientname,
+                note         = :note,
+                is_lead      = :is_lead
+            WHERE id = :id
+        ");
+        $stmt->execute([
+            ':phonenumber'  => $body['phonenumber']  ?? $existing['phonenumber'],
+            ':reminderdate' => $body['reminderdate'] ?? $existing['reminderdate'],
+            ':status'       => $body['status']       ?? $existing['status'],
+            ':type'         => $body['type']         ?? $existing['type'],
+            ':clientname'   => $body['clientname']   ?? $existing['clientname'],
+            ':note'         => $body['note']         ?? $existing['note'],
+            ':is_lead'      => (int)($body['is_lead'] ?? $existing['is_lead']),
+            ':id'           => $id,
+        ]);
+        logAction($pdo, "Follow-up updated for: " . ($body['phonenumber'] ?? $existing['phonenumber']) . " (id=$id)");
+        jsonOut(['success' => true]);
+    }
+
+    if ($action === 'delete') {
+        requirePermission($pdo, 'can_delete_followup');
+        $id = (int)($body['id'] ?? 0);
+        if (!$id) jsonOut(['error' => 'Invalid ID'], 400);
+        $stmt = $pdo->prepare("SELECT phonenumber, clientname FROM followup WHERE id = ? AND deleted_at IS NULL");
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        if (!$row) jsonOut(['error' => 'Follow-up not found'], 404);
+        $pdo->prepare("UPDATE followup SET deleted_at = ? WHERE id = ?")->execute([date('Y-m-d H:i:s'), $id]);
+        logAction($pdo, "Follow-up deleted: " . ($row['clientname'] ?: $row['phonenumber']) . " (id=$id)");
         jsonOut(['success' => true]);
     }
 

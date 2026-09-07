@@ -7,8 +7,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { jsonOut([]); }
 
 $pdo = getDB();
 requireAuth($pdo);
-
-// Create logs table if not exists (with user column)
+requirePermission($pdo, 'view_logs');
 $pdo->exec("CREATE TABLE IF NOT EXISTS logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     message TEXT NOT NULL,

@@ -94,6 +94,24 @@ document.addEventListener('focusout', e => { if (e.target.matches('input,textare
 
 /* ---- NAVIGATION ---- */
 function navigate(page) {
+  // View-only screen gates — checked before any DOM/state changes so a
+  // denied navigation leaves the current screen exactly as it was instead
+  // of flashing the target page before bouncing back.
+  if (page === 'clients' && !can('view_clients')) { showPermissionDenied(); return; }
+  if (page === 'logs' && !can('view_logs')) { showPermissionDenied(); return; }
+  if (page === 'queries') {
+    // The merged Queries page has two independently-gated sub-views. If
+    // the one currently selected isn't allowed, fall back to the other
+    // one rather than denying outright — only block if neither is.
+    if (queriesView === 'records' && !can('view_records') && can('view_followups')) {
+      queriesView = 'followups';
+    } else if (queriesView === 'followups' && !can('view_followups') && can('view_records')) {
+      queriesView = 'records';
+    }
+    const allowed = queriesView === 'followups' ? can('view_followups') : can('view_records');
+    if (!allowed) { showPermissionDenied(); return; }
+  }
+
   closeFabSheet();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -175,8 +193,14 @@ function resetFollowupFilter() {
 // Switches the sub-view inside the Queries page and loads its data.
 // Also the entry point used by dashboard shortcuts (navigateQueries).
 function setQueriesView(view) {
+  const target = view === 'followups' ? 'followups' : 'records';
+  // Guards the in-page toggle buttons directly, since they call this
+  // without going through navigate()'s own gate.
+  const allowed = target === 'followups' ? can('view_followups') : can('view_records');
+  if (!allowed) { showPermissionDenied(); return; }
+
   const prevView = queriesView;
-  queriesView = view === 'followups' ? 'followups' : 'records';
+  queriesView = target;
 
   // Switching sub-view is a fresh look at that list, not a continuation —
   // drop whatever filter/date was applied on either side so "Pending" on
@@ -239,12 +263,14 @@ function fabAction(label) {
 
   switch (label) {
     case 'Add Client':
+      if (!can('can_add_client')) { showPermissionDenied(); return; }
       navigate('clients');
       openModal('addClientModal');
       populateSoftwareTypes();
       return;
 
     case 'Add New Record':
+      if (!can('can_add_record')) { showPermissionDenied(); return; }
       navigateQueries('records');
       openModal('addRecordModal');
       populateClientSelect();
@@ -252,12 +278,14 @@ function fabAction(label) {
       return;
 
     case 'Add New Follow-up':
+      if (!can('can_add_followup')) { showPermissionDenied(); return; }
       navigateQueries('followups');
       openModal('addFollowupModal');
       populateFollowupClientSelect();
       return;
 
     case 'Pending Records':
+      if (!can('access_pending_records')) { showPermissionDenied(); return; }
       navigateQueries('records');
       // Select the "Pending" filter chip and reload with it applied.
       document.querySelectorAll('#recordFilters .chip').forEach(c => c.classList.remove('active'));
@@ -301,6 +329,23 @@ function fabAction(label) {
     case 'File Manager':
       openFileManager();
       return;
+
+    case 'Add User':
+      if (!isAdmin()) { showPermissionDenied('Only admins can add staff accounts.'); return; }
+      openModal('addUserModal');
+      return;
+
+    case 'Set User':
+      if (!isAdmin()) { showPermissionDenied('Only admins can manage staff permissions.'); return; }
+      openModal('setUserModal');
+      loadSetUserList();
+      return;
+
+    case 'Archives':
+      if (!isAdmin()) { showPermissionDenied('Only admins can access Archives.'); return; }
+      openModal('archivesModal');
+      loadArchivesList();
+      return;
   }
 
   showToast(`${label} — coming soon`);
@@ -335,6 +380,84 @@ function setUserInfo(username, userid) {
   if (profAvatar) profAvatar.textContent = initial;
   if (profName)   profName.textContent   = username || 'Admin';
   if (profId)     profId.textContent     = '#' + String(userid || 1).padStart(3, '0');
+}
+
+/* ---- PERMISSIONS ----
+   Set once after login/session-check from the server's response — never
+   computed or trusted from anything else client-side. This state only
+   controls what the UI *shows*; every actual gate is re-checked by the
+   PHP endpoint on every request, so a user editing localStorage or the
+   in-memory object here can't grant themselves anything the backend
+   won't also allow. */
+let currentRole = 'viewer';
+let currentPermissions = {};
+
+function setPermissions(role, permissions) {
+  currentRole = role || 'viewer';
+  currentPermissions = permissions || {};
+  applyPermissionUI();
+}
+
+function can(key) {
+  return !!currentPermissions[key];
+}
+
+// Role check for the Add User / Set User / Archives FAB items — these
+// aren't gated by a permission key like everything else, they're
+// hard-gated to the admin role only (see users.php's comment on why).
+function isAdmin() {
+  return currentRole === 'admin';
+}
+
+// Re-applies permission-driven visibility to whatever's currently on
+// screen. Called once after login/session-check, and again any time a
+// screen that has gated controls re-renders (e.g. opening a client's
+// detail modal).
+function applyPermissionUI() {
+  const clientPill = document.getElementById('addClientPill');
+  if (clientPill) clientPill.classList.toggle('perm-hidden', !can('can_add_client'));
+  const recordPill = document.getElementById('addRecordPill');
+  if (recordPill) recordPill.classList.toggle('perm-hidden', !can('can_add_record'));
+  const followupPill = document.getElementById('addFollowupPill');
+  if (followupPill) followupPill.classList.toggle('perm-hidden', !can('can_add_followup'));
+
+  document.querySelectorAll('.admin-fab').forEach(el => el.classList.toggle('perm-hidden', !isAdmin()));
+
+  // View-only screen gates — hide the nav entry points a restricted user
+  // can't open anyway, so nothing dangles as a dead end that just bounces
+  // them into a Permission Denied modal.
+  document.querySelector('.nav-item[data-page="clients"]')?.classList.toggle('perm-hidden', !can('view_clients'));
+  document.querySelector('.nav-item[data-page="queries"]')?.classList.toggle('perm-hidden', !can('view_records') && !can('view_followups'));
+  document.querySelector('#queriesToggle .queries-toggle__btn[data-view="records"]')?.classList.toggle('perm-hidden', !can('view_records'));
+  document.querySelector('#queriesToggle .queries-toggle__btn[data-view="followups"]')?.classList.toggle('perm-hidden', !can('view_followups'));
+  document.getElementById('viewLogsRow')?.classList.toggle('perm-hidden', !can('view_logs'));
+}
+
+/* ---- PERMISSION DENIED / CONFIRM MODALS (generic, reused everywhere) ---- */
+function showPermissionDenied(message) {
+  const msgEl = document.getElementById('permissionDeniedMessage');
+  if (msgEl) msgEl.textContent = message || "You don't have permission to do this. Contact an admin if you think this is a mistake.";
+  openModal('permissionDeniedModal');
+}
+
+// Generic reusable confirm dialog. onConfirm runs only if the user hits
+// the action button; the button re-uses .btn-danger styling and label
+// since every caller so far is a delete, but title/message/label are all
+// swappable per call.
+function showConfirm(title, message, onConfirm, confirmLabel = 'Delete') {
+  document.getElementById('confirmModalTitle').textContent = title;
+  document.getElementById('confirmModalMessage').textContent = message;
+  const okBtn = document.getElementById('confirmModalOkBtn');
+  okBtn.textContent = confirmLabel;
+  // Clone-and-replace to drop any previously bound handler instead of
+  // stacking a new listener on top of it on every call.
+  const freshBtn = okBtn.cloneNode(true);
+  okBtn.parentNode.replaceChild(freshBtn, okBtn);
+  freshBtn.addEventListener('click', () => {
+    closeModal('confirmModal');
+    onConfirm();
+  });
+  openModal('confirmModal');
 }
 
 /* ---- THEME ---- */
@@ -395,6 +518,8 @@ function closeModal(id) {
   if (id === 'quickMessageModal')   resetQuickMessageForm();
   if (id === 'sysIdCheckerModal')   resetSystemIdChecker();
   if (id === 'addTransactionModal') resetTransactionForm();
+  if (id === 'addUserModal')        resetAddUserForm();
+  if (id === 'userPermissionsModal') _editingUserUid = null;
 }
 
 /* ---- CHANGE PASSWORD ---- */
@@ -475,6 +600,10 @@ function resetClientForm() {
   document.getElementById('c_system_id').value = '';
   document.getElementById('c_software_type').value = '';
   document.getElementById('c_status').value = '1';
+
+  editingClientId = null;
+  document.getElementById('addClientModalTitle').textContent = 'New Client';
+  document.getElementById('addClientSaveBtn').textContent = 'Save Client';
 }
 
 // Close modals on backdrop click
@@ -712,7 +841,18 @@ function renderClients(clients) {
   }, 'No clients found');
 }
 
+// Tracks which client the detail modal is currently showing, so the
+// header's Edit/Delete buttons (and their handlers) know what to act on
+// without needing the id passed back through onclick="" every time.
+let currentDetailClient = null;
+
 function openClientDetail(c) {
+  currentDetailClient = c;
+  const editBtn   = document.getElementById('cdEditBtn');
+  const deleteBtn = document.getElementById('cdDeleteBtn');
+  if (editBtn)   editBtn.style.display   = can('can_edit_client')   ? '' : 'none';
+  if (deleteBtn) deleteBtn.style.display = can('can_delete_client') ? '' : 'none';
+
   const isActive = clientIsActive(c);
   const waIcon = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.025.507 3.934 1.397 5.61L0 24l6.545-1.38A11.946 11.946 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.8 9.8 0 0 1-5.003-1.367l-.36-.214-3.713.983.993-3.648-.235-.374A9.817 9.817 0 0 1 2.182 12C2.182 6.578 6.578 2.182 12 2.182S21.818 6.578 21.818 12 17.422 21.818 12 21.818z"/></svg>`;
 
@@ -875,6 +1015,66 @@ function detailRow(label, value) {
   return `<div class="detail-row"><span class="detail-label">${label}</span><span class="detail-value">${esc(value)}</span></div>`;
 }
 
+// Non-null while addClientModal is in edit mode, holding the id of the
+// client being edited. saveClient() branches add-vs-update off this, and
+// resetClientForm() (called by closeModal) always clears it back to null
+// so the modal defaults back to "New Client" next time it's opened fresh.
+let editingClientId = null;
+
+// Opens the Add/Edit Client modal pre-filled with the client currently
+// shown in the detail modal, and flips it into edit mode. Relies on
+// currentDetailClient rather than taking an id so the caller (the header
+// button) doesn't need to know it.
+function openEditClientFromDetail() {
+  const c = currentDetailClient;
+  if (!c) return;
+  if (!can('can_edit_client')) { showPermissionDenied(); return; }
+
+  editingClientId = c.id;
+  document.getElementById('addClientModalTitle').textContent = 'Edit Client';
+  document.getElementById('addClientSaveBtn').textContent = 'Save Changes';
+
+  document.getElementById('c_name').value              = c.clientname || '';
+  document.getElementById('c_firm').value               = c.firmname || '';
+  document.getElementById('c_address').value             = c.address || '';
+  document.getElementById('c_contact').value             = c.contact || '';
+  document.getElementById('c_email').value               = c.email || '';
+  document.getElementById('c_whatsapp').value            = c.whatsapp || '+91';
+  document.getElementById('c_renewal_date').value        = c.renewal_date || '';
+  document.getElementById('c_system_id').value           = c.system_id || '';
+  document.getElementById('c_software_version').value    = c.software_version || '';
+  document.getElementById('c_status').value               = String(c.status ?? 1);
+
+  populateSoftwareTypes().then(() => {
+    document.getElementById('c_software_type').value = c.software_type || '';
+  });
+
+  closeModal('clientDetailModal');
+  openModal('addClientModal');
+}
+
+function confirmDeleteClient() {
+  const c = currentDetailClient;
+  if (!c) return;
+  if (!can('can_delete_client')) { showPermissionDenied(); return; }
+
+  showConfirm(
+    'Delete client?',
+    `${c.firmname || c.clientname} will be moved to Archives and can be restored within 30 days.`,
+    async () => {
+      try {
+        await API.deleteClient(c.id);
+        showToast('Client deleted');
+        closeModal('clientDetailModal');
+        loadClients();
+      } catch (e) {
+        if (e.status === 403) showPermissionDenied();
+        else showToast('Failed to delete client');
+      }
+    }
+  );
+}
+
 async function saveClient() {
   const data = {
     clientname:       document.getElementById('c_name').value.trim(),
@@ -892,18 +1092,19 @@ async function saveClient() {
   if (!data.clientname || !data.firmname || !data.contact) {
     showToast(' Fill required fields'); return;
   }
+  const isEdit = !!editingClientId;
+  if (isEdit) data.id = editingClientId;
+
   try {
-    await API.addClient(data);
-    showToast('Client saved');
-    closeModal('addClientModal');
-    clearForm(['c_name','c_firm','c_address','c_contact','c_email','c_software_version']);
-    document.getElementById('c_whatsapp').value = '+91';
-    document.getElementById('c_renewal_date').value = '';
-    document.getElementById('c_system_id').value = '';
-    document.getElementById('c_software_type').value = '';
-    document.getElementById('c_status').value = '1';
+    if (isEdit) await API.updateClient(data);
+    else        await API.addClient(data);
+    showToast(isEdit ? 'Client updated' : 'Client saved');
+    closeModal('addClientModal'); // resetClientForm() runs via closeModal(), clearing editingClientId
     loadClients();
-  } catch(e) { showToast(' Failed to save client'); }
+  } catch(e) {
+    if (e.status === 403) showPermissionDenied();
+    else showToast(isEdit ? 'Failed to update client' : 'Failed to save client');
+  }
 }
 
 /* ========================
@@ -911,6 +1112,12 @@ async function saveClient() {
    ======================== */
 let recordFilter = 'all';
 let _serviceTypeMap = {}; // serviceid -> servicetype
+
+// Non-null while addRecordModal is in edit mode, holding the id of the
+// record being edited — same pattern as editingClientId. saveRecord()
+// branches add-vs-update off this; resetRecordForm() (run by closeModal())
+// always clears it so the modal defaults back to "New Record" next time.
+let editingRecordId = null;
 
 let recordDateFilter = ''; // holds YYYY-MM-DD when date filter is active
 
@@ -1190,27 +1397,48 @@ async function saveRecord() {
     extra.query_note     = document.getElementById('r_install_note')?.value.trim() || '';
   }
 
-  try {
-    const result = await API.addRecord({ action: 'add', ...base, ...extra });
+  const isEdit = !!editingRecordId;
 
-    // If files were attached, upload them now tied to the new record's id.
+  try {
+    let result;
+    if (isEdit) {
+      result = await API.updateRecord({ id: editingRecordId, ...base, ...extra });
+    } else {
+      result = await API.addRecord({ action: 'add', ...base, ...extra });
+    }
+
+    // If files were attached, upload them now tied to the record's id.
     const attachFiles = document.getElementById('r_attach_files')?.checked;
     const filesInput   = document.getElementById('r_files_input');
     const filesToUpload = (attachFiles && filesInput && filesInput.files.length)
       ? Array.from(filesInput.files) : [];
+    const recordId = isEdit ? editingRecordId : result.id;
     for (const file of filesToUpload) {
       try {
-        await API.uploadFile(file, { recordId: result.id, account: base.account });
+        await API.uploadFile(file, { recordId, account: base.account });
       } catch (e) {
         showToast(`Failed to upload ${file.name}`);
       }
     }
 
-    showToast('Record saved');
-    closeModal('addRecordModal');
-    resetRecordForm();
-    loadRecords();
-  } catch(e) { showToast('Failed to save record'); }
+    showToast(isEdit ? 'Record updated' : 'Record saved');
+    closeModal('addRecordModal'); // resetRecordForm() runs via closeModal(), clearing editingRecordId
+    refreshAfterRecordChange();
+  } catch(e) {
+    if (e.status === 403) showPermissionDenied();
+    else showToast(isEdit ? 'Failed to update record' : 'Failed to save record');
+  }
+}
+
+// Refetches whichever record-backed lists might be showing the record that
+// was just added/edited/deleted (Records tab, Transaction History, and a
+// client's ledger inside their detail modal) so none of them go stale.
+// Cheap enough to just call all three rather than track which is active.
+function refreshAfterRecordChange() {
+  loadRecords(document.getElementById('recordSearch')?.value || '');
+  const thSearch = document.getElementById('thSearch');
+  if (thSearch) loadTransactionHistory(thSearch.value || '');
+  if (currentDetailClient) loadClientLedger(currentDetailClient.clientname);
 }
 
 function toggleRecordStatus() {
@@ -1265,6 +1493,10 @@ document.getElementById('r_transdate').value = localDateStr();
   ['r_grp_support','r_grp_renewal','r_grp_syschange','r_grp_install','r_grp_files'].forEach(id => {
     const el = document.getElementById(id); if(el) el.style.display = 'none';
   });
+
+  editingRecordId = null;
+  document.getElementById('addRecordModalTitle').textContent = 'New Record';
+  document.getElementById('addRecordSaveBtn').textContent = 'Save Record';
 }
 
 /* ========================
@@ -1272,6 +1504,14 @@ document.getElementById('r_transdate').value = localDateStr();
    ======================== */
 let followupFilter = 'all';
 let followupType   = 'new'; // 'client' or 'new'
+
+// Non-null while addFollowupModal is in edit mode, holding the id of the
+// follow-up being edited — same pattern used for clients/records.
+let editingFollowupId = null;
+
+// Tracks which follow-up the detail modal is currently showing, so the
+// header's Edit/Delete buttons know what to act on.
+let currentDetailFollowup = null;
 
 let followupsPaging = { page: 1, hasMore: false, search: '', filter: 'all' };
 
@@ -1356,6 +1596,12 @@ async function markFollowupCancelled(id) {
 
 
 function openFollowupDetail(f) {
+  currentDetailFollowup = f;
+  const editBtn   = document.getElementById('frdmEditBtn');
+  const deleteBtn = document.getElementById('frdmDeleteBtn');
+  if (editBtn)   editBtn.style.display   = can('can_edit_followup')   ? '' : 'none';
+  if (deleteBtn) deleteBtn.style.display = can('can_delete_followup') ? '' : 'none';
+
   const isClient = f.type === 'client';
   const status   = f.status || 'pending';
   // Raw status still drives the "Mark Complete" button (an overdue item is
@@ -1544,12 +1790,20 @@ async function saveFollowup() {
     }
   }
 
+  const isEdit = !!editingFollowupId;
+  const data = { phonenumber, reminderdate, status, is_lead, type: followupType, clientname, note };
+  if (isEdit) data.id = editingFollowupId;
+
   try {
-    await API.addFollowup({ phonenumber, reminderdate, status, is_lead, type: followupType, clientname, note });
-    showToast('Follow-up saved');
-    closeModal('addFollowupModal');
+    if (isEdit) await API.editFollowup(data);
+    else        await API.addFollowup(data);
+    showToast(isEdit ? 'Follow-up updated' : 'Follow-up saved');
+    closeModal('addFollowupModal'); // resetFollowupForm() runs via closeModal(), clearing editingFollowupId
     loadFollowups();
-  } catch(e) { showToast('Failed to save'); }
+  } catch(e) {
+    if (e.status === 403) showPermissionDenied();
+    else showToast(isEdit ? 'Failed to update follow-up' : 'Failed to save');
+  }
 }
 
 function resetFollowupForm() {
@@ -1568,6 +1822,66 @@ function resetFollowupForm() {
   document.getElementById('f_date').value        = localDateStr();
   document.getElementById('f_status').value      = 'pending';
   document.getElementById('f_is_lead').checked   = false;
+
+  editingFollowupId = null;
+  document.getElementById('addFollowupModalTitle').textContent = 'New Follow-up';
+  document.getElementById('addFollowupSaveBtn').textContent = 'Save';
+}
+
+// Opens the Add/Edit Follow-up modal pre-filled with the follow-up
+// currently shown in the detail modal, and flips it into edit mode — same
+// pattern as openEditClientFromDetail()/openEditRecordFromDetail().
+function openEditFollowupFromDetail() {
+  const f = currentDetailFollowup;
+  if (!f) return;
+  if (!can('can_edit_followup')) { showPermissionDenied(); return; }
+
+  editingFollowupId = f.id;
+  document.getElementById('addFollowupModalTitle').textContent = 'Edit Follow-up';
+  document.getElementById('addFollowupSaveBtn').textContent = 'Save Changes';
+
+  followupType = f.type === 'client' ? 'client' : 'new';
+  onFollowupTypeToggle(followupType);
+
+  if (followupType === 'client') {
+    document.getElementById('f_client').value = f.clientname || '';
+    const client = allClients.find(c => c.clientname === f.clientname);
+    document.getElementById('f_client_search').value = client ? (client.firmname || client.clientname) : (f.clientname || '');
+    document.getElementById('f_phone').value = f.phonenumber || '';
+    document.getElementById('f_note_client').value = f.note || '';
+  } else {
+    document.getElementById('f_phone_new').value = f.phonenumber || '';
+    document.getElementById('f_note_new').value = f.note || '';
+  }
+
+  document.getElementById('f_date').value = f.reminderdate || '';
+  document.getElementById('f_status').value = f.status || 'pending';
+  document.getElementById('f_is_lead').checked = parseInt(f.is_lead) === 1;
+
+  closeModal('followupDetailModal');
+  openModal('addFollowupModal');
+}
+
+function confirmDeleteFollowup() {
+  const f = currentDetailFollowup;
+  if (!f) return;
+  if (!can('can_delete_followup')) { showPermissionDenied(); return; }
+
+  showConfirm(
+    'Delete follow-up?',
+    `This will be moved to Archives and can be restored within 30 days.`,
+    async () => {
+      try {
+        await API.deleteFollowup(f.id);
+        showToast('Follow-up deleted');
+        closeModal('followupDetailModal');
+        loadFollowups();
+      } catch (e) {
+        if (e.status === 403) showPermissionDenied();
+        else showToast('Failed to delete follow-up');
+      }
+    }
+  );
 }
 
 /* ========================
@@ -2009,6 +2323,7 @@ let _renewalsData = [];
 let _renewalDetailClient = null;
 
 function openRenewalsList() {
+  if (!can('access_renewals')) { showPermissionDenied(); return; }
   openModal('renewalsModal');
   loadRenewalsList();
 }
@@ -2017,7 +2332,7 @@ async function loadRenewalsList() {
   const el = document.getElementById('renewalsList');
   el.innerHTML = `<div class="empty-state">Loading...</div>`;
   try {
-    const data = await API.getClients();
+    const data = await API.getClientsForRenewals();
     const clients = data.clients || [];
     _renewalsData = clients
       .filter(c => c.renewal_date && daysFromToday(c.renewal_date) >= 0)
@@ -2273,6 +2588,7 @@ async function sendRenewalReminderFromDetail() {
 let _inactiveClientsData = [];
 
 function openInactiveClientsList() {
+  if (!can('access_inactive_clients')) { showPermissionDenied(); return; }
   openModal('inactiveClientsModal');
   loadInactiveClientsList();
 }
@@ -2333,6 +2649,11 @@ function openClientDetailByIdFrom(id, list) {
    ======================== */
 let _transactionClients = [];
 
+// Non-null while addTransactionModal is in edit mode -- same pattern as
+// editingRecordId/editingClientId. saveTransaction() branches add-vs-update
+// off this; resetTransactionForm() (run by closeModal()) clears it.
+let editingPaymentId = null;
+
 async function populateTransactionClientSelect() {
   if (_transactionClients.length) return;
   try {
@@ -2342,6 +2663,7 @@ async function populateTransactionClientSelect() {
 }
 
 function openAddTransactionModal() {
+  if (!can('access_add_transaction')) { showPermissionDenied(); return; }
   openModal('addTransactionModal');
   populateTransactionClientSelect();
   resetTransactionForm();
@@ -2405,6 +2727,7 @@ async function saveTransaction() {
   if (!account) { showToast('Select a client'); return; }
   if (!amount || parseFloat(amount) <= 0) { showToast('Enter a valid payment amount'); return; }
 
+  const isEdit = !!editingPaymentId;
   const data = {
     account,
     transdate:      document.getElementById('at_transdate').value || localDateStr(),
@@ -2412,12 +2735,18 @@ async function saveTransaction() {
     payment_amount: amount,
     note:           document.getElementById('at_note').value.trim(),
   };
+  if (isEdit) data.id = editingPaymentId;
 
   try {
-    await API.addPayment(data);
-    showToast('Payment recorded');
-    closeModal('addTransactionModal');
-  } catch (e) { showToast('Failed to save payment'); }
+    if (isEdit) await API.updatePayment(data);
+    else        await API.addPayment(data);
+    showToast(isEdit ? 'Transaction updated' : 'Payment recorded');
+    closeModal('addTransactionModal'); // resetTransactionForm() runs via closeModal(), clearing editingPaymentId
+    refreshAfterRecordChange();
+  } catch (e) {
+    if (e.status === 403) showPermissionDenied();
+    else showToast(isEdit ? 'Failed to update transaction' : 'Failed to save payment');
+  }
 }
 
 function resetTransactionForm() {
@@ -2427,6 +2756,10 @@ function resetTransactionForm() {
   const box = document.getElementById('at_account_suggestions');
   if (box) box.style.display = 'none';
   document.getElementById('at_transdate').value = localDateStr();
+
+  editingPaymentId = null;
+  document.getElementById('addTransactionModalTitle').textContent = 'Add Transaction';
+  document.getElementById('addTransactionSaveBtn').textContent = 'Save Transaction';
 }
 
 /* ========================
@@ -2438,6 +2771,7 @@ let allTransactionHistory = [];
 let transactionHistoryPaging = { page: 1, hasMore: false, search: '' };
 
 function openTransactionHistory() {
+  if (!can('access_transaction_history')) { showPermissionDenied(); return; }
   openModal('transactionHistoryModal');
   const search = document.getElementById('thSearch');
   if (search) search.value = '';
@@ -2811,10 +3145,21 @@ function openRecordDetailById(id)   { const r = allRecords.find(x => x.id === id
 function openFollowupDetailById(id) { const f = allFollowups.find(x => x.id === id); if (f) openFollowupDetail(f); }
 function openClientDetailById(id)   { const c = allClients.find(x => x.id === id);   if (c) openClientDetail(c); }
 
+// Tracks which record the detail modal is currently showing, same pattern
+// as currentDetailClient, so the header's Edit/Delete buttons know what
+// to act on.
+let currentDetailRecord = null;
+
 function openRecordDetail(r) {
+  currentDetailRecord = r;
   const type   = (r.servicetype || '').toLowerCase();
   const config = RECORD_TYPE_CONFIG[type] || RECORD_TYPE_DEFAULT;
   const status = r.status || 'pending';
+
+  const editBtn   = document.getElementById('rdmEditBtn');
+  const deleteBtn = document.getElementById('rdmDeleteBtn');
+  if (editBtn)   editBtn.style.display   = can('can_edit_record')   ? '' : 'none';
+  if (deleteBtn) deleteBtn.style.display = can('can_delete_record') ? '' : 'none';
  
   /* ── Header title ── */
   document.getElementById('rdm-title').textContent = r.servicename || 'Record Details';
@@ -2919,6 +3264,119 @@ async function markRecordDone(id) {
   } catch(e) {
     showToast('Failed to update record');
   }
+}
+
+/* -- EDIT / DELETE --
+   A record in this modal is either a regular record (support/renewal/
+   system change/install -- edited via the Add Record modal, same as
+   creating one) or a direct payment tagged servicetype='payment' (edited
+   via the separate Add Transaction modal, since its fields are different).
+   Both branches key off currentDetailRecord rather than taking an id, same
+   as openEditClientFromDetail(). */
+function openEditRecordFromDetail() {
+  const r = currentDetailRecord;
+  if (!r) return;
+  if (!can('can_edit_record')) { showPermissionDenied(); return; }
+
+  if ((r.servicetype || '').toLowerCase() === 'payment') {
+    editingPaymentId = r.id;
+    document.getElementById('addTransactionModalTitle').textContent = 'Edit Transaction';
+    document.getElementById('addTransactionSaveBtn').textContent = 'Save Changes';
+
+    const client = allClients.find(c => c.clientname === r.account);
+    document.getElementById('at_account').value = r.account || '';
+    document.getElementById('at_account_search').value = client ? (client.firmname || client.clientname) : (r.account || '');
+    document.getElementById('at_transdate').value = (r.transdate || '').split(' ')[0];
+    document.getElementById('at_payment_info').value = r.payment_info || '';
+    document.getElementById('at_payment_amount').value = r.payment_amount || '';
+    document.getElementById('at_note').value = r.query_note || '';
+
+    closeModal('recordDetailModal');
+    openModal('addTransactionModal');
+    return;
+  }
+
+  editingRecordId = r.id;
+  document.getElementById('addRecordModalTitle').textContent = 'Edit Record';
+  document.getElementById('addRecordSaveBtn').textContent = 'Save Changes';
+
+  const client = allClients.find(c => c.clientname === r.account);
+  document.getElementById('r_account').value = r.account || '';
+  document.getElementById('r_account_search').value = client ? (client.firmname || client.clientname) : (r.account || '');
+  document.getElementById('r_transdate').value = (r.transdate || '').split(' ')[0];
+
+  // Status toggle
+  const sel = document.getElementById('r_status');
+  sel.value = r.status || 'pending';
+  const toggle = document.getElementById('r_status_toggle');
+  const thumb  = document.getElementById('r_status_thumb');
+  const label  = document.getElementById('r_status_label');
+  if (sel.value === 'done') {
+    label.textContent = 'Done';
+    toggle.style.background = 'var(--accent)';
+    thumb.style.transform = 'translateX(20px)';
+  } else {
+    label.textContent = 'Pending';
+    toggle.style.background = 'var(--border)';
+    thumb.style.transform = 'translateX(0)';
+  }
+
+  // Populate the service dropdown, then select this record's service and
+  // reveal the matching field group -- mirrors what onServiceSelect() does
+  // when a user picks a service manually.
+  populateServiceSelect().then(() => {
+    const serviceSel = document.getElementById('r_service');
+    if (r.serviceid) serviceSel.value = r.serviceid;
+    serviceSel.dataset.serviceType = (r.servicetype || '').toLowerCase();
+    serviceSel.dataset.serviceName = r.servicename || '';
+    onServiceSelect();
+
+    const type = (r.servicetype || '').toLowerCase();
+    if (type === 'support') {
+      document.getElementById('r_query').value = r.query || '';
+      document.getElementById('r_query_note').value = r.query_note || '';
+    } else if (type === 'renewal') {
+      document.getElementById('r_renewal_date').value = r.renewaldate || '';
+      document.getElementById('r_payment_info').value = r.payment_info || '';
+      document.getElementById('r_payment_amount').value = r.payment_amount || '';
+      document.getElementById('r_next_renewal').value = r.next_renewal || '';
+      document.getElementById('r_renewal_note').value = r.query_note || '';
+    } else if (type === 'system change') {
+      document.getElementById('r_systemid').value = r.systemid || '';
+      document.getElementById('r_new_systemid').value = r.new_systemid || '';
+      document.getElementById('r_syschange_note').value = r.query_note || '';
+    } else if (type === 'install') {
+      document.getElementById('r_install_payment_info').value = r.payment_info || '';
+      document.getElementById('r_install_payment_amount').value = r.payment_amount || '';
+      document.getElementById('r_install_note').value = r.query_note || '';
+    }
+  });
+
+  closeModal('recordDetailModal');
+  openModal('addRecordModal');
+}
+
+function confirmDeleteRecord() {
+  const r = currentDetailRecord;
+  if (!r) return;
+  if (!can('can_delete_record')) { showPermissionDenied(); return; }
+
+  const isPayment = (r.servicetype || '').toLowerCase() === 'payment';
+  showConfirm(
+    isPayment ? 'Delete transaction?' : 'Delete record?',
+    `This will be moved to Archives and can be restored within 30 days.`,
+    async () => {
+      try {
+        await API.deleteRecord(r.id);
+        showToast(isPayment ? 'Transaction deleted' : 'Record deleted');
+        closeModal('recordDetailModal');
+        refreshAfterRecordChange();
+      } catch (e) {
+        if (e.status === 403) showPermissionDenied();
+        else showToast('Failed to delete');
+      }
+    }
+  );
 }
  
 
@@ -3028,6 +3486,273 @@ document.addEventListener('keydown', e => {
   }
 });
 
+/* ========================
+   ADD USER (admin only)
+   ======================== */
+
+function resetAddUserForm() {
+  ['au_username', 'au_password'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const roleEl = document.getElementById('au_role');
+  if (roleEl) roleEl.value = 'viewer';
+  const errEl = document.getElementById('auError');
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+}
+
+function showAddUserError(msg) {
+  const errEl = document.getElementById('auError');
+  if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+}
+
+async function saveAddUser() {
+  const username = document.getElementById('au_username').value.trim();
+  const password = document.getElementById('au_password').value;
+  const role     = document.getElementById('au_role').value;
+
+  const errEl = document.getElementById('auError');
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+
+  if (!username || !password) { showAddUserError('Username and password are required.'); return; }
+  if (password.length < 6)    { showAddUserError('Password must be at least 6 characters.'); return; }
+
+  const btn = document.getElementById('auSaveBtn');
+  btn.disabled = true;
+  try {
+    await API.addUser({ username, password, role });
+    closeModal('addUserModal');
+    showToast('User created');
+    // If Set User is already open behind this, refresh it so the new
+    // account shows up immediately instead of needing a manual reopen.
+    if (document.getElementById('setUserModal')?.classList.contains('open')) {
+      loadSetUserList();
+    }
+  } catch (e) {
+    showAddUserError((e.body && e.body.error) || e.message || 'Failed to create user.');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ========================
+   SET USER — user list + per-user permission editor (admin only)
+   ======================== */
+
+// Grouped for display only — the actual list of valid keys always comes
+// from the server (data.permission_keys), so a key added later in
+// helpers.php still renders even if this map hasn't been updated yet
+// (it just falls back to the raw key name via PERMISSION_LABELS[k] || k).
+const PERMISSION_GROUPS = [
+  { title: 'Clients',    keys: ['can_add_client', 'can_edit_client', 'can_delete_client'] },
+  { title: 'Records',    keys: ['can_add_record', 'can_edit_record', 'can_delete_record'] },
+  { title: 'Follow-ups', keys: ['can_add_followup', 'can_edit_followup', 'can_delete_followup'] },
+  { title: 'Phone Number Visibility', keys: ['view_phone_clients', 'view_phone_renewals', 'view_phone_followups'] },
+  { title: 'Screen Access', keys: ['access_renewals', 'access_inactive_clients', 'access_add_transaction', 'access_transaction_history', 'access_pending_records'] },
+  { title: 'View Access',   keys: ['view_clients', 'view_records', 'view_followups', 'view_logs'] },
+];
+
+const PERMISSION_LABELS = {
+  can_add_client: 'Add Client', can_edit_client: 'Edit Client', can_delete_client: 'Delete Client',
+  can_add_record: 'Add Record', can_edit_record: 'Edit Record', can_delete_record: 'Delete Record',
+  can_add_followup: 'Add Follow-up', can_edit_followup: 'Edit Follow-up', can_delete_followup: 'Delete Follow-up',
+  view_phone_clients: 'Show phone in Clients list & detail', view_phone_renewals: 'Show phone in Renewal Details',
+  view_phone_followups: 'Show phone in Follow-ups',
+  access_renewals: 'Upcoming Renewals', access_inactive_clients: 'Inactive Clients',
+  access_add_transaction: 'Add Transaction', access_transaction_history: 'Transaction History',
+  access_pending_records: 'Pending Records',
+  view_clients: 'View Clients screen', view_records: 'View Records screen',
+  view_followups: 'View Follow-ups screen', view_logs: 'View Logs screen',
+};
+
+function roleLabel(role) {
+  return { admin: 'Admin', support: 'Support', onsite: 'Onsite', viewer: 'Viewer' }[role] || role;
+}
+
+let _setUserUsers    = [];
+let _editingUserUid  = null;
+let _editingUserPerms = {};
+
+async function loadSetUserList() {
+  const el = document.getElementById('setUserList');
+  el.innerHTML = `<div class="empty-state">Loading...</div>`;
+  try {
+    const data = await API.getUsers();
+    _setUserUsers = data.users || [];
+    renderSetUserList();
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state">Failed to load users</div>`;
+  }
+}
+
+function renderSetUserList() {
+  const el = document.getElementById('setUserList');
+  renderPaginatedList(el, _setUserUsers, LIST_PAGE_SIZE, (u) => {
+    const initial = (u.username || '?')[0].toUpperCase();
+    return `
+      <button class="list-item client-item" onclick="openUserPermissionsEditor(${u.uid})">
+        <div class="item-avatar">${initial}</div>
+        <div class="item-body">
+          <div class="item-title">${esc(u.username)}</div>
+        </div>
+        <div class="client-item-right">
+          <span class="badge badge-active">${esc(roleLabel(u.role))}</span>
+        </div>
+      </button>
+    `;
+  }, 'No staff accounts yet');
+}
+
+function openUserPermissionsEditor(uid) {
+  const user = _setUserUsers.find(u => u.uid === uid);
+  if (!user) return;
+  _editingUserUid   = uid;
+  _editingUserPerms = { ...user.permissions };
+
+  document.getElementById('upTitle').textContent      = user.username;
+  document.getElementById('upRoleLabel').textContent   = roleLabel(user.role);
+  document.querySelectorAll('#upRolePresets .chip').forEach(c => {
+    c.classList.toggle('active', c.dataset.role === user.role);
+  });
+
+  renderUserPermissionsBody();
+  openModal('userPermissionsModal');
+}
+
+function renderUserPermissionsBody() {
+  const el = document.getElementById('userPermissionsBody');
+  el.innerHTML = PERMISSION_GROUPS.map(g => `
+    <div class="perm-group">
+      <div class="perm-group-title">${g.title}</div>
+      ${g.keys.map(k => `
+        <div class="perm-toggle-row">
+          <span class="perm-toggle-label">${esc(PERMISSION_LABELS[k] || k)}</span>
+          <div class="perm-toggle ${_editingUserPerms[k] ? 'on' : ''}" onclick="togglePermInEditor('${k}')">
+            <div class="perm-toggle-thumb"></div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+}
+
+function togglePermInEditor(key) {
+  _editingUserPerms[key] = !_editingUserPerms[key];
+  renderUserPermissionsBody();
+}
+
+function applyRolePresetInEditor(role) {
+  if (!_editingUserUid) return;
+  showConfirm(
+    'Reset to role default?',
+    `This overwrites every permission toggle below with the standard ${roleLabel(role)} preset for this user.`,
+    async () => {
+      try {
+        await API.applyRolePreset({ uid: _editingUserUid, role });
+        showToast(`Permissions reset to ${roleLabel(role)} default`);
+        const uid = _editingUserUid;
+        await loadSetUserList();
+        openUserPermissionsEditor(uid);
+      } catch (e) {
+        showToast('Failed to reset permissions');
+      }
+    },
+    'Reset'
+  );
+}
+
+async function saveUserPermissions() {
+  if (!_editingUserUid) return;
+  const btn = document.getElementById('upSaveBtn');
+  btn.disabled = true;
+  try {
+    await API.setUserPermissions({ uid: _editingUserUid, permissions: _editingUserPerms });
+    showToast('Permissions saved');
+    closeModal('userPermissionsModal');
+    loadSetUserList();
+  } catch (e) {
+    showToast('Failed to save permissions');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ========================
+   ARCHIVES — soft-deleted Clients/Records/Follow-ups, restorable for
+   30 days (admin only). Purge itself runs server-side (see
+   purgeExpiredArchives() in helpers.php, piggybacked on auth.php's
+   session check) — this screen is just the list + manual restore/delete.
+   ======================== */
+
+const ARCHIVE_TYPE_LABELS = { clients: 'Client', transactions: 'Record', followups: 'Follow-up' };
+
+let _archiveItems = [];
+
+async function loadArchivesList() {
+  const el = document.getElementById('archivesList');
+  el.innerHTML = `<div class="empty-state">Loading...</div>`;
+  try {
+    const data = await API.getArchives();
+    _archiveItems = data.items || [];
+    renderArchivesList();
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state">Failed to load archives</div>`;
+  }
+}
+
+function renderArchivesList() {
+  const el = document.getElementById('archivesList');
+  renderPaginatedList(el, _archiveItems, LIST_PAGE_SIZE, (it) => {
+    const urgent = it.days_left <= 3;
+    return `
+      <div class="list-item" style="cursor:default;align-items:flex-start;">
+        <div class="item-avatar" style="background:var(--surface-2)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+        </div>
+        <div class="item-body">
+          <div class="item-title">${esc(it.title || '(untitled)')}</div>
+          <div class="item-info-row">
+            <span class="item-info-text">${esc(ARCHIVE_TYPE_LABELS[it.type] || it.type)}</span>
+            <span class="item-info-dot"></span>
+            <span class="item-info-text" style="${urgent ? 'color:var(--danger);font-weight:600;' : ''}">${it.days_left}d left</span>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button class="btn btn-ghost" style="padding:6px 12px;font-size:12px;" onclick="restoreArchiveItem('${it.type}', ${it.id})">Restore</button>
+            <button class="btn btn-danger" style="padding:6px 12px;font-size:12px;" onclick="purgeArchiveItem('${it.type}', ${it.id})">Delete Permanently</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }, 'Archives is empty');
+}
+
+async function restoreArchiveItem(type, id) {
+  try {
+    await API.restoreArchived({ type, id });
+    showToast('Restored');
+    loadArchivesList();
+  } catch (e) {
+    showToast((e.body && e.body.error) || 'Failed to restore');
+  }
+}
+
+function purgeArchiveItem(type, id) {
+  showConfirm(
+    'Delete permanently?',
+    'This removes it for good, right now, instead of waiting out the rest of the 30 days. This can\'t be undone.',
+    async () => {
+      try {
+        await API.purgeArchived({ type, id });
+        showToast('Deleted permanently');
+        loadArchivesList();
+      } catch (e) {
+        showToast((e.body && e.body.error) || 'Failed to delete');
+      }
+    },
+    'Delete Permanently'
+  );
+}
+
 /* ====== APP INIT ====== */
 
 (async function init() {
@@ -3074,6 +3799,7 @@ document.addEventListener('keydown', e => {
     const data = await res.json();
     if (data.logged_in) {
       setUserInfo(data.username, data.userid);
+      setPermissions(data.role, data.permissions);
       hideLoginScreen();
       // Set today's date on modals
       document.getElementById('f_date').value = localDateStr();

@@ -14,9 +14,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { jsonOut([]); }
 
 $pdo    = getDB();
 requireAuth($pdo);
+
+// Auto-migrate: soft-delete column. This one table backs Records, Add
+// Transaction, and Transaction History (filtered by servicetype), so a
+// single deleted_at column here covers archiving for all three instead of
+// needing separate columns/logic per screen.
+try {
+    $cols = array_column($pdo->query("PRAGMA table_info(transactions)")->fetchAll(), 'name');
+    if (!in_array('deleted_at', $cols)) {
+        $pdo->exec("ALTER TABLE transactions ADD COLUMN deleted_at DATETIME DEFAULT NULL");
+    }
+} catch (Exception $e) {}
+
 $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method === 'GET') {
+    requirePermission($pdo, 'view_records');
 
     if (isset($_GET['services'])) {
         $stmt = $pdo->query("SELECT serviceid, servicename, servicetype, price FROM services ORDER BY servicename ASC");
@@ -34,7 +47,7 @@ if ($method === 'GET') {
         $page     = max(1, (int)($_GET['page'] ?? 1));
         $pageSize = 50;
         $offset   = ($page - 1) * $pageSize;
-        $where    = ["payment_amount IS NOT NULL"];
+        $where    = ["payment_amount IS NOT NULL", "deleted_at IS NULL"];
         $params   = [];
 
         if ($search) {
@@ -100,6 +113,7 @@ if ($method === 'GET') {
     // is the one exception: it wants a client's complete trail, payments
     // included, so it passes include_payments=1 to opt back in.
     $where    = !empty($_GET['include_payments']) ? [] : ["(servicetype IS NULL OR servicetype != 'payment')"];
+    $where[]  = "deleted_at IS NULL";
     $params   = [];
 
     if ($search) {
@@ -145,6 +159,7 @@ if ($method === 'POST') {
     $action = $body['action'] ?? '';
 
     if ($action === 'add') {
+        requirePermission($pdo, 'can_add_record');
         try {
             $transid  = 'TXN' . strtoupper(substr(uniqid(), -6));
             $userid   = (int)($_SESSION['userid'] ?? 1);
@@ -234,6 +249,9 @@ if ($method === 'POST') {
     // servicetype='payment' and always status='done' — there's no
     // pending/in-progress state for a payment that's already been taken.
     if ($action === 'add_payment') {
+        // Same table as regular records (see the deleted_at comment above),
+        // so it shares can_add_record rather than needing its own key.
+        requirePermission($pdo, 'can_add_record');
         try {
             $account = trim($body['account'] ?? '');
             if ($account === '') {
@@ -291,10 +309,94 @@ if ($method === 'POST') {
     }
 
     if ($action === 'update_status') {
+        requirePermission($pdo, 'can_edit_record');
         $id = (int)($body['id'] ?? 0);
         if (!$id) jsonOut(['error' => 'Invalid ID'], 400);
         $pdo->prepare("UPDATE transactions SET status = ? WHERE id = ?")->execute([$body['status'] ?? 'done', $id]);
         logAction($pdo, "Record #$id marked as " . ($body['status'] ?? 'done'));
+        jsonOut(['success' => true]);
+    }
+
+    // Full edit — covers both a regular record (support/renewal/system
+    // change/install) and a direct payment (Add Transaction), since both
+    // live in this same table. Only columns actually present in the
+    // request body are touched, so a payment edit (which never sends
+    // servicename/systemid/etc.) doesn't clobber those fields with blanks.
+    if ($action === 'update') {
+        requirePermission($pdo, 'can_edit_record');
+        try {
+            $id = (int)($body['id'] ?? 0);
+            if (!$id) jsonOut(['error' => 'Invalid ID'], 400);
+
+            $existingStmt = $pdo->prepare("SELECT * FROM transactions WHERE id = ? AND deleted_at IS NULL");
+            $existingStmt->execute([$id]);
+            $existing = $existingStmt->fetch();
+            if (!$existing) jsonOut(['error' => 'Record not found'], 404);
+
+            // Editable column => value, falling back to the existing stored
+            // value for any field this particular edit form doesn't send.
+            $paymentAmount = $existing['payment_amount'];
+            if (array_key_exists('payment_amount', $body)) {
+                $paymentAmount = ($body['payment_amount'] === '' || $body['payment_amount'] === null)
+                    ? null : (float)$body['payment_amount'];
+            }
+
+            $fields = [
+                'account'        => $body['account']        ?? $existing['account'],
+                'transdate'      => $body['transdate']       ?? $existing['transdate'],
+                'renewaldate'    => $body['renewaldate']     ?? $existing['renewaldate'],
+                'next_renewal'   => $body['next_renewal']    ?? $existing['next_renewal'],
+                'payment_info'   => $body['payment_info']    ?? $existing['payment_info'],
+                'payment_amount' => $paymentAmount,
+                'status'         => $body['status']          ?? $existing['status'],
+                'query'          => $body['query']           ?? $existing['query'],
+                'query_note'     => $body['query_note'] ?? $body['note'] ?? $existing['query_note'],
+                'systemid'       => $body['systemid']        ?? $existing['systemid'],
+                'new_systemid'   => $body['new_systemid']    ?? $existing['new_systemid'],
+            ];
+
+            $stmt = $pdo->prepare("
+                UPDATE transactions
+                SET account = :account, transdate = :transdate, renewaldate = :renewaldate,
+                    next_renewal = :next_renewal, payment_info = :payment_info,
+                    payment_amount = :payment_amount, status = :status,
+                    `query` = :query, query_note = :query_note,
+                    systemid = :systemid, new_systemid = :new_systemid
+                WHERE id = :id
+            ");
+            $stmt->execute($fields + [':id' => $id]);
+
+            // Same side effects as 'add' — keep the client record consistent
+            // if a system-change/renewal edit changed the relevant date/id.
+            if (!empty($fields['new_systemid']) && strtolower($existing['servicetype']) === 'system change') {
+                $pdo->prepare("UPDATE clients SET system_id = ? WHERE clientname = ?")
+                    ->execute([$fields['new_systemid'], $fields['account']]);
+            }
+            if (strtolower($existing['servicetype']) === 'renewal' && !empty($fields['next_renewal'])) {
+                $pdo->prepare("UPDATE clients SET renewal_date = ? WHERE clientname = ?")
+                    ->execute([$fields['next_renewal'], $fields['account']]);
+            }
+
+            logAction($pdo, "Record updated: " . ($existing['servicename'] ?: 'Payment') . " for " . $fields['account'] . " (id=$id)");
+            jsonOut(['success' => true]);
+        } catch (Throwable $e) {
+            error_log('[records.php update] ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+            jsonOut(['error' => 'Something went wrong while updating this record. Please try again.'], 500);
+        }
+    }
+
+    if ($action === 'delete') {
+        requirePermission($pdo, 'can_delete_record');
+        $id = (int)($body['id'] ?? 0);
+        if (!$id) jsonOut(['error' => 'Invalid ID'], 400);
+        $stmt = $pdo->prepare("SELECT account, servicename FROM transactions WHERE id = ? AND deleted_at IS NULL");
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        if (!$row) jsonOut(['error' => 'Record not found'], 404);
+        // Soft delete — recoverable from Archives for 30 days, same pattern
+        // as clients.php, rather than an immediate unrecoverable DELETE.
+        $pdo->prepare("UPDATE transactions SET deleted_at = ? WHERE id = ?")->execute([date('Y-m-d H:i:s'), $id]);
+        logAction($pdo, "Record deleted: " . ($row['servicename'] ?: 'Payment') . " for " . $row['account'] . " (id=$id)");
         jsonOut(['success' => true]);
     }
 

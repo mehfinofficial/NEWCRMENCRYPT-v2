@@ -31,11 +31,19 @@ if ($action === 'check') {
     try { $pdo->exec("ALTER TABLE users ADD COLUMN remember_token TEXT DEFAULT NULL"); } catch(Exception $e) {}
     try { $pdo->exec("ALTER TABLE users ADD COLUMN token_expires DATETIME DEFAULT NULL"); } catch(Exception $e) {}
 
+    // No cron on this host, so the 30-day Archives purge rides along on
+    // this endpoint instead — it's hit once every time the app loads, for
+    // every logged-in user, which is frequent enough to keep Archives
+    // clean without needing a scheduled task.
+    purgeExpiredArchives($pdo);
+
     if (!empty($_SESSION['userid'])) {
         jsonOut([
-            'logged_in' => true,
-            'userid'    => (int)$_SESSION['userid'],
-            'username'  => $_SESSION['username'],
+            'logged_in'   => true,
+            'userid'      => (int)$_SESSION['userid'],
+            'username'    => $_SESSION['username'],
+            'role'        => getUserRole($pdo),
+            'permissions' => getUserPermissions($pdo),
         ]);
     }
 
@@ -48,9 +56,11 @@ if ($action === 'check') {
             $_SESSION['userid']   = $user['uid'];
             $_SESSION['username'] = $user['username'];
             jsonOut([
-                'logged_in' => true,
-                'userid'    => (int)$user['uid'],
-                'username'  => $user['username'],
+                'logged_in'   => true,
+                'userid'      => (int)$user['uid'],
+                'username'    => $user['username'],
+                'role'        => getUserRole($pdo, $user['uid']),
+                'permissions' => getUserPermissions($pdo, $user['uid']),
             ]);
         }
     }
@@ -168,9 +178,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'login') {
     }
 
     jsonOut([
-        'success'  => true,
-        'userid'   => (int)$user['uid'],
-        'username' => $user['username'],
+        'success'     => true,
+        'userid'      => (int)$user['uid'],
+        'username'    => $user['username'],
+        'role'        => getUserRole($pdo, $user['uid']),
+        'permissions' => getUserPermissions($pdo, $user['uid']),
     ]);
 }
 

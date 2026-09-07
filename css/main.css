@@ -1175,6 +1175,59 @@ body.no-scroll { overflow: hidden; height: 100dvh; }
 [data-theme="dark"] .btn-danger { background: #3b1111; color: #fca5a5; }
 [data-theme="dark"] .btn-danger:hover { background: #4a1414; }
 
+/* Permission-gated element, forced hidden regardless of any other
+   visibility class (e.g. the floating pills' own .visible toggle). */
+.perm-hidden { display: none !important; }
+
+/* ========================
+   USER MANAGEMENT (Add User / Set User)
+   ======================== */
+
+/* Toggle switch — same look/geometry as the inline record-status toggle
+   used elsewhere, pulled into a reusable class since the permission
+   editor needs ~20 of these. */
+.perm-toggle {
+  width: 44px; height: 24px;
+  border-radius: 12px;
+  background: var(--border);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.perm-toggle.on { background: var(--accent); }
+.perm-toggle-thumb {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  position: absolute;
+  top: 2px; left: 2px;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.perm-toggle.on .perm-toggle-thumb { transform: translateX(20px); }
+
+.perm-group { display: flex; flex-direction: column; gap: 2px; }
+.perm-group + .perm-group { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.perm-group-title {
+  font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .03em;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+.perm-toggle-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 0;
+}
+.perm-toggle-label { font-size: 14px; font-weight: 500; color: var(--text-primary); }
+
+.perm-role-presets {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  padding-bottom: 12px; margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.perm-role-presets .chip { cursor: pointer; }
+
 /* ========================
    TOAST
    ======================== */

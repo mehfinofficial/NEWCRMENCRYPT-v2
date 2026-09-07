@@ -351,7 +351,7 @@
           <h3 class="section-title">Account</h3>
         </div>
         <div class="profile-card">
-          <button class="profile-row" onclick="navigate('logs')">
+          <button class="profile-row" id="viewLogsRow" onclick="navigate('logs')">
             <span class="profile-row__left">
               <span class="profile-row__icon">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -415,6 +415,22 @@
   <div class="fab-backdrop" id="fabBackdrop" onclick="closeFabSheet()"></div>
   <div class="fab-sheet" id="fabSheet">
     <div class="fab-sheet__grid">
+      <!-- Admin-only. Hidden for everyone else via applyPermissionUI() —
+           JS-driven, but that's UI convenience only: the actual gate is
+           users.php's hard-coded admin check server-side. -->
+      <button class="fab-sheet__item admin-fab perm-hidden" onclick="fabAction('Add User')">
+        <span class="fab-sheet__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0"/><path d="M6 21v-2a4 4 0 0 1 4 -4h3.5"/><path d="M16 19h6"/><path d="M19 16v6"/></svg></span>
+        <span>Add User</span>
+      </button>
+      <button class="fab-sheet__item admin-fab perm-hidden" onclick="fabAction('Set User')">
+        <span class="fab-sheet__icon"><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-user-cog"><path stroke="none" d="M0 0h24v24H0z" fill="none" />	<path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0" />	<path d="M6 21v-2a4 4 0 0 1 4 -4h2.5" />	<path d="M17.001 19a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" /><path d="M19.001 15.5v1.5" />	<path d="M19.001 21v1.5" />	<path d="M22.032 17.25l-1.299 .75" />	<path d="M17.27 20l-1.3 .75" />	<path d="M15.97 17.25l1.3 .75" />	<path d="M20.733 20l1.3 .75" /></svg></span>
+        <span>Set User</span>
+      </button>
+      <button class="fab-sheet__item admin-fab perm-hidden" onclick="fabAction('Archives')">
+        <span class="fab-sheet__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10"/><line x1="10" y1="12" x2="14" y2="12"/></svg></span>
+        <span>Archives</span>
+      </button>
+      
       <button class="fab-sheet__item" onclick="fabAction('Client Ledger')">
         <span class="fab-sheet__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h9l3 3v13a1 1 0 0 1 -1 1h-11a1 1 0 0 1 -1 -1v-15a1 1 0 0 1 1 -1"/><line x1="9" y1="9" x2="12" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg></span>
         <span>Client Ledger</span>
@@ -464,6 +480,8 @@
         <span class="fab-sheet__icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg></span>
         <span>Pending Records</span>
       </button>
+
+      
     </div>
   </div>
 
@@ -495,7 +513,7 @@
   <div class="modal-overlay" id="addClientModal">
     <div class="modal">
       <div class="modal-header">
-        <h3>New Client</h3>
+        <h3 id="addClientModalTitle">New Client</h3>
         <button class="icon-btn" onclick="closeModal('addClientModal')">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
@@ -520,7 +538,132 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="closeModal('addClientModal')">Cancel</button>
-        <button class="btn btn-primary" onclick="saveClient()">Save Client</button>
+        <button class="btn btn-primary" id="addClientSaveBtn" onclick="saveClient()">Save Client</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PERMISSION DENIED (generic, reused everywhere access is gated) -->
+  <div class="modal-overlay" id="permissionDeniedModal">
+    <div class="modal" style="max-width:320px;">
+      <div class="modal-header">
+        <h3>Permission Denied</h3>
+      </div>
+      <div class="modal-body">
+        <p id="permissionDeniedMessage" style="margin:0;color:var(--text-secondary);">You don't have permission to do this. Contact an admin if you think this is a mistake.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" style="flex:1;" onclick="closeModal('permissionDeniedModal')">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONFIRM (generic, reused for delete confirmations) -->
+  <div class="modal-overlay" id="confirmModal">
+    <div class="modal" style="max-width:320px;">
+      <div class="modal-header">
+        <h3 id="confirmModalTitle">Are you sure?</h3>
+      </div>
+      <div class="modal-body">
+        <p id="confirmModalMessage" style="margin:0;color:var(--text-secondary);"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" style="flex:1;" onclick="closeModal('confirmModal')">Cancel</button>
+        <button class="btn btn-danger" id="confirmModalOkBtn" style="flex:1;">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD USER (admin only — Set User FAB) -->
+  <div class="modal-overlay" id="addUserModal">
+    <div class="modal" style="max-width:420px;">
+      <div class="modal-header">
+        <h3>Add User</h3>
+        <button class="icon-btn" onclick="closeModal('addUserModal')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p id="auError" style="display:none;margin:0 0 4px;padding:10px 12px;border-radius:var(--radius-sm);background:#fef2f2;color:var(--danger);font-size:13px;"></p>
+        <div class="form-group"><label>Username *</label>
+          <input type="text" id="au_username" placeholder="e.g. sahil.support" autocomplete="off" />
+        </div>
+        <div class="form-group"><label>Password *</label>
+          <input type="password" id="au_password" placeholder="At least 6 characters" autocomplete="new-password" />
+        </div>
+        <div class="form-group"><label>Role *</label>
+          <select id="au_role">
+            <option value="admin">Admin — full access</option>
+            <option value="support">Support — no delete</option>
+            <option value="onsite">Onsite — view + add only</option>
+            <option value="viewer" selected>Viewer — read-only</option>
+          </select>
+        </div>
+        <p style="margin:0;font-size:12px;color:var(--text-secondary);">Role sets the starting permissions. Fine-tune them anytime from Set User.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal('addUserModal')">Cancel</button>
+        <button class="btn btn-primary" id="auSaveBtn" onclick="saveAddUser()">Create User</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SET USER — user list (admin only) -->
+  <div class="modal-overlay" id="setUserModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Set User</h3>
+        <button class="icon-btn" onclick="closeModal('setUserModal')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p style="margin:0 0 4px;font-size:13px;color:var(--text-secondary);">Tap a user to view or change what they can do.</p>
+        <div class="card-list" id="setUserList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SET USER — permission editor for one user (admin only) -->
+  <div class="modal-overlay" id="userPermissionsModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="upTitle">Permissions</h3>
+        <button class="icon-btn" onclick="closeModal('userPermissionsModal')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div>
+          <p style="margin:0 0 8px;font-size:12px;color:var(--text-secondary);">Role: <span id="upRoleLabel" style="font-weight:600;color:var(--text-primary);"></span> — tap a preset to reset all toggles below to that role's defaults.</p>
+          <div class="perm-role-presets" id="upRolePresets">
+            <span class="chip" data-role="admin" onclick="applyRolePresetInEditor('admin')">Admin</span>
+            <span class="chip" data-role="support" onclick="applyRolePresetInEditor('support')">Support</span>
+            <span class="chip" data-role="onsite" onclick="applyRolePresetInEditor('onsite')">Onsite</span>
+            <span class="chip" data-role="viewer" onclick="applyRolePresetInEditor('viewer')">Viewer</span>
+          </div>
+        </div>
+        <div id="userPermissionsBody"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal('userPermissionsModal')">Cancel</button>
+        <button class="btn btn-primary" id="upSaveBtn" onclick="saveUserPermissions()">Save Permissions</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ARCHIVES — soft-deleted items, restorable for 30 days (admin only) -->
+  <div class="modal-overlay" id="archivesModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Archives</h3>
+        <button class="icon-btn" onclick="closeModal('archivesModal')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p style="margin:0 0 4px;font-size:13px;color:var(--text-secondary);">Deleted clients, records, and follow-ups stay here for 30 days before they're permanently removed.</p>
+        <div class="card-list" id="archivesList"></div>
       </div>
     </div>
   </div>
@@ -529,7 +672,7 @@
   <div class="modal-overlay" id="addRecordModal">
     <div class="modal">
       <div class="modal-header">
-        <h3>New Record</h3>
+        <h3 id="addRecordModalTitle">New Record</h3>
         <button class="icon-btn" onclick="closeModal('addRecordModal')">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
@@ -625,7 +768,7 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="closeModal('addRecordModal')">Cancel</button>
-        <button class="btn btn-primary" onclick="saveRecord()">Save Record</button>
+        <button class="btn btn-primary" id="addRecordSaveBtn" onclick="saveRecord()">Save Record</button>
       </div>
     </div>
   </div>
@@ -634,7 +777,7 @@
   <div class="modal-overlay" id="addFollowupModal">
     <div class="modal">
       <div class="modal-header">
-        <h3>New Follow-up</h3>
+        <h3 id="addFollowupModalTitle">New Follow-up</h3>
         <button class="icon-btn" onclick="closeModal('addFollowupModal')">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
@@ -684,7 +827,7 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="closeModal('addFollowupModal')">Cancel</button>
-        <button class="btn btn-primary" onclick="saveFollowup()">Save</button>
+        <button class="btn btn-primary" id="addFollowupSaveBtn" onclick="saveFollowup()">Save</button>
       </div>
     </div>
   </div>
@@ -808,7 +951,7 @@
   <div class="modal-overlay" id="addTransactionModal">
     <div class="modal">
       <div class="modal-header">
-        <h3>Add Transaction</h3>
+        <h3 id="addTransactionModalTitle">Add Transaction</h3>
         <button class="icon-btn" onclick="closeModal('addTransactionModal')">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
@@ -829,7 +972,7 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="closeModal('addTransactionModal')">Cancel</button>
-        <button class="btn btn-primary" onclick="saveTransaction()">Save Transaction</button>
+        <button class="btn btn-primary" id="addTransactionSaveBtn" onclick="saveTransaction()">Save Transaction</button>
       </div>
     </div>
   </div>
@@ -901,9 +1044,17 @@
     <div class="modal">
       <div class="modal-header">
         <h3>Client Details</h3>
-        <button class="icon-btn" onclick="closeModal('clientDetailModal')">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <button class="icon-btn" id="cdEditBtn" onclick="openEditClientFromDetail()" title="Edit client" style="display:none;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4h-6a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-6"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3l-9.5 9.5l-4 1l1 -4l9.5 -9.5z"/></svg>
+          </button>
+          <button class="icon-btn" id="cdDeleteBtn" onclick="confirmDeleteClient()" title="Delete client" style="display:none;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg>
+          </button>
+          <button class="icon-btn" onclick="closeModal('clientDetailModal')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
       </div>
       <div class="modal-body" id="clientDetailBody"></div>
       <div class="modal-footer" style="display:flex;gap:8px;">
@@ -919,19 +1070,19 @@
   </div>
 
   <!-- FLOATING ADD CLIENT PILL — direct body child for correct fixed positioning -->
-  <div class="add-client-pill" id="addClientPill" onclick="openModal('addClientModal'); populateSoftwareTypes();">
+  <div class="add-client-pill" id="addClientPill" onclick="if (!can('can_add_client')) { showPermissionDenied(); return; } openModal('addClientModal'); populateSoftwareTypes();">
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0"/><path d="M16 19h6"/><path d="M19 16v6"/><path d="M6 21v-2a4 4 0 0 1 4 -4h4"/></svg>
     <span>Add New Client</span>
   </div>
 
   <!-- FLOATING ADD RECORD PILL -->
-  <div class="add-client-pill" id="addRecordPill" onclick="openModal('addRecordModal'); populateClientSelect(); populateServiceSelect();">
+  <div class="add-client-pill" id="addRecordPill" onclick="if (!can('can_add_record')) { showPermissionDenied(); return; } openModal('addRecordModal'); populateClientSelect(); populateServiceSelect();">
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2"/><path d="M12 11l0 6"/><path d="M9 14l6 0"/></svg>
     <span>Add New Record</span>
   </div>
 
   <!-- FLOATING ADD FOLLOWUP PILL -->
-  <div class="add-client-pill" id="addFollowupPill" onclick="openModal('addFollowupModal'); populateFollowupClientSelect();">
+  <div class="add-client-pill" id="addFollowupPill" onclick="if (!can('can_add_followup')) { showPermissionDenied(); return; } openModal('addFollowupModal'); populateFollowupClientSelect();">
    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-phone-plus"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M5 4h4l2 5l-2.5 1.5a11 11 0 0 0 5 5l1.5 -2.5l5 2v4a2 2 0 0 1 -2 2a16 16 0 0 1 -15 -15a2 2 0 0 1 2 -2" /><path d="M15 6h6m-3 -3v6" /></svg>
     <span>Add Follow-up</span>
   </div>
@@ -947,9 +1098,17 @@
   <div class="modal modal--record-detail">
     <div class="modal-header">
       <h3 id="rdm-title">Record Details</h3>
-      <button class="icon-btn" onclick="closeModal('recordDetailModal')">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
+      <div style="display:flex;align-items:center;gap:4px;">
+        <button class="icon-btn" id="rdmEditBtn" onclick="openEditRecordFromDetail()" title="Edit record" style="display:none;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4h-6a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-6"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3l-9.5 9.5l-4 1l1 -4l9.5 -9.5z"/></svg>
+        </button>
+        <button class="icon-btn" id="rdmDeleteBtn" onclick="confirmDeleteRecord()" title="Delete record" style="display:none;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg>
+        </button>
+        <button class="icon-btn" onclick="closeModal('recordDetailModal')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
     </div>
     <div class="modal-body" id="rdm-body">
       <!-- dynamically populated by openRecordDetail(r) -->
@@ -966,9 +1125,17 @@
     <div class="modal modal--record-detail">
       <div class="modal-header">
         <h3 id="frdm-title">Follow-up</h3>
-        <button class="icon-btn" onclick="closeModal('followupDetailModal')">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <button class="icon-btn" id="frdmEditBtn" onclick="openEditFollowupFromDetail()" title="Edit follow-up" style="display:none;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4h-6a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-6"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3l-9.5 9.5l-4 1l1 -4l9.5 -9.5z"/></svg>
+          </button>
+          <button class="icon-btn" id="frdmDeleteBtn" onclick="confirmDeleteFollowup()" title="Delete follow-up" style="display:none;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/></svg>
+          </button>
+          <button class="icon-btn" onclick="closeModal('followupDetailModal')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
       </div>
       <div class="modal-body" id="frdm-body"></div>
       <div class="modal-footer" id="frdm-footer"></div>

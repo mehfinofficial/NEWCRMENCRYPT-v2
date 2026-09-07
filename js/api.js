@@ -22,12 +22,24 @@ const _scriptBase = (() => {
 const API = {
   base: _scriptBase + 'api/',
 
+  // Both get() and post() parse the JSON body even on a non-2xx response
+  // (rather than just throwing "HTTP 403") and attach it to the thrown
+  // Error as `.body`, with `.status` alongside it. That's what lets a
+  // caller distinguish a permission_denied 403 from any other failure and
+  // react to it specifically (e.g. show the Permission Denied modal)
+  // instead of every failed call collapsing into the same generic catch.
   async get(endpoint, params = {}) {
     const url = new URL(this.base + endpoint);
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-    const res = await fetch(url, { credentials: 'include' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+    const res  = await fetch(url, { credentials: 'include' });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(body.error || `HTTP ${res.status}`);
+      err.status = res.status;
+      err.body   = body;
+      throw err;
+    }
+    return body;
   },
 
   async post(endpoint, data = {}) {
@@ -37,8 +49,14 @@ const API = {
       credentials: 'include',
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(body.error || `HTTP ${res.status}`);
+      err.status = res.status;
+      err.body   = body;
+      throw err;
+    }
+    return body;
   },
 
   // DASHBOARD
@@ -46,6 +64,7 @@ const API = {
 
   // CLIENTS
   async getClients(search = '') { return this.get('clients.php', { search }); },
+  async getClientsForRenewals() { return this.get('clients.php', { context: 'renewals' }); },
   async addClient(data)         { return this.post('clients.php', { action: 'add', ...data }); },
   async getClient(id)           { return this.get('clients.php', { id }); },
   async updateClient(data)      { return this.post('clients.php', { action: 'update', ...data }); },
@@ -54,15 +73,20 @@ const API = {
   // RECORDS
   async getRecords(params = {}) { return this.get('records.php', params); },
   async addRecord(data)         { return this.post('records.php', { action: 'add', ...data }); },
+  async updateRecord(data)      { return this.post('records.php', { action: 'update', ...data }); },
+  async deleteRecord(id)        { return this.post('records.php', { action: 'delete', id }); },
 
   // TRANSACTIONS (Add Transaction / Transaction History)
   async addPayment(data)             { return this.post('records.php', { action: 'add_payment', ...data }); },
+  async updatePayment(data)          { return this.post('records.php', { action: 'update', ...data }); },
   async getTransactionHistory(params = {}) { return this.get('records.php', { history: 1, ...params }); },
 
   // FOLLOWUPS
   async getFollowups(params = {})  { return this.get('followups.php', params); },
   async addFollowup(data)          { return this.post('followups.php', { action: 'add', ...data }); },
   async updateFollowup(data)       { return this.post('followups.php', { action: 'update', ...data }); },
+  async editFollowup(data)         { return this.post('followups.php', { action: 'edit', ...data }); },
+  async deleteFollowup(id)         { return this.post('followups.php', { action: 'delete', id }); },
 
   // MESSAGE TEMPLATES (Quick Message)
   async getMessageTemplates()      { return this.get('messages.php'); },
@@ -76,6 +100,18 @@ const API = {
 
   // LOGS
   async getLogs() { return this.get('logs.php'); },
+
+  // USER MANAGEMENT (Add User / Set User — admin only, enforced server-side
+  // by users.php regardless of what the client sends)
+  async getUsers()               { return this.get('users.php'); },
+  async addUser(data)            { return this.post('users.php', { action: 'add', ...data }); },
+  async applyRolePreset(data)    { return this.post('users.php', { action: 'apply_role_preset', ...data }); },
+  async setUserPermissions(data) { return this.post('users.php', { action: 'set_permissions', ...data }); },
+
+  // ARCHIVES (Archives FAB — admin only)
+  async getArchives()          { return this.get('archive.php'); },
+  async restoreArchived(data)  { return this.post('archive.php', { action: 'restore', ...data }); },
+  async purgeArchived(data)    { return this.post('archive.php', { action: 'purge', ...data }); },
 
   // SYNC
   async checkSync(since = 0) { return this.get('sync.php', { since }); },
