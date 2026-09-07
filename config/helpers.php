@@ -165,20 +165,15 @@ function getRolePermissionDefaults(string $role): array {
     }
 
     if ($role === 'viewer') {
-        return array_merge($all, [
-            'can_add_client' => false, 'can_edit_client' => false, 'can_delete_client' => false,
-            'can_add_record' => false, 'can_edit_record' => false, 'can_delete_record' => false,
-            'can_add_followup' => false, 'can_edit_followup' => false, 'can_delete_followup' => false,
-            'view_phone_clients'  => false,
-            'view_phone_renewals' => false,
-            'view_phone_followups'=> false,
-            // Viewer is read-only end to end: no status changes, no
-            // outbound messages, no file management screen.
-            'can_update_followup_status' => false,
-            'can_send_reminder'          => false,
-            'access_quick_message'       => false,
-            'access_file_manager'        => false,
-        ]);
+        // Viewer is read-only end to end: every action, message, phone
+        // reveal, and operational screen is off. Only the three View
+        // Access toggles (Clients/Records/Follow-ups) start on — that's
+        // the entire point of the role.
+        $viewer = array_fill_keys(ALL_PERMISSION_KEYS, false);
+        $viewer['view_clients']   = true;
+        $viewer['view_records']   = true;
+        $viewer['view_followups'] = true;
+        return $viewer;
     }
 
     // Unknown role → fail closed. Every real code path validates role
