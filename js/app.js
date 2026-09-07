@@ -3853,6 +3853,61 @@ function purgeArchiveItem(type, id) {
 
 /* ====== APP INIT ====== */
 
+// ========================================================
+// OFFLINE SCREEN
+// navigator.onLine only reflects the OS network interface
+// (e.g. still true on Wi-Fi with no real internet), so the
+// online/offline events give us instant feedback while the
+// retry button does a real fetch to confirm connectivity.
+// ========================================================
+let _offlineCheckInFlight = false;
+
+function showOfflineScreen() {
+  const el = document.getElementById('offlineScreen');
+  if (!el) return;
+  el.classList.add('show');
+  _pollPaused = true; // don't let background polling fire while we know we're offline
+  // force reflow so the opacity transition actually plays
+  requestAnimationFrame(() => el.classList.add('in'));
+}
+
+function hideOfflineScreen() {
+  const el = document.getElementById('offlineScreen');
+  if (!el) return;
+  el.classList.remove('in');
+  _pollPaused = false; // resume background polling now that we're back
+  setTimeout(() => el.classList.remove('show'), 300);
+}
+
+async function checkConnectionNow() {
+  if (_offlineCheckInFlight) return;
+  _offlineCheckInFlight = true;
+
+  try {
+    // Cache-busted, no-store request to a same-origin endpoint —
+    // resolves only if we actually have a working connection.
+    await fetch('api/auth.php?action=check&_=' + Date.now(), {
+      credentials: 'include',
+      cache: 'no-store'
+    }).then(res => {
+      if (!res.ok) throw new Error('bad response');
+    });
+    hideOfflineScreen();
+  } catch (e) {
+    // still offline — the 'online' event will fire again and re-trigger this
+  } finally {
+    _offlineCheckInFlight = false;
+  }
+}
+
+window.addEventListener('offline', showOfflineScreen);
+window.addEventListener('online', checkConnectionNow);
+
+// Initial state — catches the case where the app is opened while already offline
+if (!navigator.onLine) {
+  showOfflineScreen();
+}
+
 (async function init() {
   const splashStart = performance.now();
   const MIN_SPLASH_MS = 3000; // floor — splash always shows for at least this long, even if auth resolves instantly
