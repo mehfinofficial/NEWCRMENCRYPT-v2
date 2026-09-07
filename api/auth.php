@@ -164,6 +164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'login') {
     session_regenerate_id(true);
     $_SESSION['userid']   = $user['uid'];
     $_SESSION['username'] = $user['username'];
+    touchLastActive($pdo, $user['uid']);
 
     if ($remember) {
         $token   = bin2hex(random_bytes(32));

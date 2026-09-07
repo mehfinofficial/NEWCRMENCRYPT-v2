@@ -30,8 +30,10 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS files (
     download_token TEXT,
     token_expires_at DATETIME,
     uploaded_by TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    deleted_at DATETIME DEFAULT NULL
 )");
+ensureFilesDeletedAtColumn($pdo);
 
 $uploadDir = __DIR__ . '/../data/uploads';
 if (!is_dir($uploadDir)) {
@@ -106,21 +108,21 @@ if ($method === 'GET') {
     // Files attached to one record (for the "File" pill on a query).
     if (isset($_GET['record_id'])) {
         $rid = (int)$_GET['record_id'];
-        $stmt = $pdo->prepare("SELECT id, original_name, filesize, created_at FROM files WHERE record_id = ? ORDER BY created_at ASC");
+        $stmt = $pdo->prepare("SELECT id, original_name, filesize, created_at FROM files WHERE record_id = ? AND deleted_at IS NULL ORDER BY created_at ASC");
         $stmt->execute([$rid]);
         jsonOut(['files' => $stmt->fetchAll()]);
     }
 
     // Default: full file list for the File Manager screen.
     $search = trim($_GET['search'] ?? '');
-    $where  = [];
+    $where  = ["f.deleted_at IS NULL"];
     $params = [];
     if ($search) {
         $like    = "%$search%";
         $where[] = "(f.original_name LIKE ? OR f.account LIKE ? OR c.firmname LIKE ?)";
         $params  = [$like, $like, $like];
     }
-    $whereSql = $where ? (" WHERE " . implode(' AND ', $where)) : '';
+    $whereSql = " WHERE " . implode(' AND ', $where);
     $stmt = $pdo->prepare("
         SELECT f.id, f.original_name, f.filesize, f.account, f.created_at, f.record_id,
                c.firmname, t.transid, t.servicename

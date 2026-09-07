@@ -86,6 +86,8 @@ if ($method === 'POST') {
         if (!$row) jsonOut(['error' => 'Item not found in Archives'], 404);
 
         $pdo->prepare("UPDATE $table SET deleted_at = NULL WHERE id = ?")->execute([$id]);
+        // A restored record brings its files back with it.
+        if ($type === 'transactions') { restoreRecordFiles($pdo, $id); }
         logAction($pdo, ucfirst($type) . " restored from Archives: " . ($row['title'] ?: "#$id"));
         jsonOut(['success' => true]);
     }
@@ -99,6 +101,9 @@ if ($method === 'POST') {
         $row = $stmt->fetch();
         if (!$row) jsonOut(['error' => 'Item not found in Archives'], 404);
 
+        // Purge the record's files first (disk + rows) so nothing orphans
+        // in data/uploads once the record itself is gone.
+        if ($type === 'transactions') { purgeRecordFiles($pdo, $id); }
         $pdo->prepare("DELETE FROM $table WHERE id = ?")->execute([$id]);
         logAction($pdo, ucfirst($type) . " permanently deleted: " . ($row['title'] ?: "#$id"));
         jsonOut(['success' => true]);

@@ -22,7 +22,7 @@ $method = $_SERVER['REQUEST_METHOD'];
 
 // ── LIST USERS (for the Set User screen) ────────────────────────────────
 if ($method === 'GET') {
-    $rows = $pdo->query("SELECT uid, username, role, permissions FROM users ORDER BY username ASC")->fetchAll();
+    $rows = $pdo->query("SELECT uid, username, role, permissions, last_active FROM users ORDER BY username ASC")->fetchAll();
     $users = array_map(function ($row) {
         $stored = json_decode($row['permissions'] ?? '', true) ?: [];
         return [
@@ -30,6 +30,7 @@ if ($method === 'GET') {
             'username'    => $row['username'],
             'role'        => $row['role'] ?: 'viewer',
             'permissions' => array_merge(array_fill_keys(ALL_PERMISSION_KEYS, true), $stored),
+            'last_active' => $row['last_active'],
         ];
     }, $rows);
     jsonOut(['users' => $users, 'permission_keys' => ALL_PERMISSION_KEYS]);

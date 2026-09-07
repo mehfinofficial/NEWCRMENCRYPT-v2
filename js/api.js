@@ -68,7 +68,7 @@ const API = {
   async addClient(data)         { return this.post('clients.php', { action: 'add', ...data }); },
   async getClient(id)           { return this.get('clients.php', { id }); },
   async updateClient(data)      { return this.post('clients.php', { action: 'update', ...data }); },
-  async deleteClient(id)        { return this.post('clients.php', { action: 'delete', id }); },
+  async deleteClient(id, force = false) { return this.post('clients.php', { action: 'delete', id, force }); },
 
   // RECORDS
   async getRecords(params = {}) { return this.get('records.php', params); },

@@ -105,12 +105,13 @@ if ($method === 'POST') {
         jsonOut(['success' => true]);
     }
 
-    // Status-only change (Mark Complete / Cancelled buttons). Gated on
-    // can_edit_followup, same as the full edit below — changing a
-    // follow-up's state is an edit, so a role with editing disabled
-    // (Onsite/Viewer) can't do this either.
+    // Status-only change (Mark Complete / Cancelled buttons). Its own
+    // permission key, separate from can_edit_followup — closing out a
+    // follow-up's state isn't the same as editing its details, and a role
+    // can have one without the other (e.g. Onsite: no edit, but can still
+    // mark done/cancelled after a visit).
     if ($action === 'update') {
-        requirePermission($pdo, 'can_edit_followup');
+        requirePermission($pdo, 'can_update_followup_status');
         $id = (int)($body['id'] ?? 0);
         if (!$id) jsonOut(['error' => 'Invalid ID'], 400);
         $stmt = $pdo->prepare("UPDATE followup SET status = :status WHERE id = :id");

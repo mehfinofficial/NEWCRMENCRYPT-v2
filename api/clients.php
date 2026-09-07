@@ -213,17 +213,37 @@ if ($method === 'POST') {
 
     if ($action === 'delete') {
         requirePermission($pdo, 'can_delete_client');
-        $id = (int)($body['id'] ?? 0);
+        $id    = (int)($body['id'] ?? 0);
+        $force = !empty($body['force']);
         if (!$id) jsonOut(['error' => 'Invalid ID'], 400);
         $stmt = $pdo->prepare("SELECT clientname FROM clients WHERE id = ? AND deleted_at IS NULL");
         $stmt->execute([$id]);
         $client = $stmt->fetch();
         if (!$client) jsonOut(['error' => 'Client not found'], 404);
+
+        // Fail-safe: a client with existing records can't be deleted by
+        // accident. First attempt (no force flag) just reports the count
+        // back so the frontend can warn and ask to confirm; only a second,
+        // explicit force:true request actually deletes.
+        if (!$force) {
+            $countStmt = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE account = ? AND deleted_at IS NULL");
+            $countStmt->execute([$client['clientname']]);
+            $recordCount = (int)$countStmt->fetchColumn();
+            if ($recordCount > 0) {
+                jsonOut([
+                    'success'      => false,
+                    'has_records'  => true,
+                    'record_count' => $recordCount,
+                    'error'        => "This client has $recordCount record(s). Delete anyway?",
+                ], 409);
+            }
+        }
+
         // Soft delete: kept in Archives for 30 days, then purged by the
         // scheduled cleanup (see api/archive.php), instead of being
         // removed immediately and unrecoverably.
         $pdo->prepare("UPDATE clients SET deleted_at = ? WHERE id = ?")->execute([date('Y-m-d H:i:s'), $id]);
-        logAction($pdo, "Client deleted: " . $client['clientname'] . " (id=$id)");
+        logAction($pdo, "Client deleted: " . $client['clientname'] . " (id=$id)" . ($force ? ' [forced, had records]' : ''));
         jsonOut(['success' => true]);
     }
 

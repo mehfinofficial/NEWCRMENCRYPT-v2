@@ -31,7 +31,45 @@ async function _pollTick() {
 
     _lastSyncTs = res.server_ts;
     _silentRefresh();
+    _refreshPermissions();
   } catch(e) { /* swallow — don't show errors for background polls */ }
+}
+
+// Re-checks this session's own role/permissions against the server and
+// re-applies the UI if an admin changed them elsewhere (Set User bumps
+// sync just like any other write, so this rides the same poll tick
+// instead of needing its own timer). Backend enforcement was already
+// live on every request regardless — this just keeps the UI (which
+// buttons/screens show) from going stale until next login/refresh.
+async function _refreshPermissions() {
+  try {
+    const res  = await fetch('api/auth.php?action=check', { credentials: 'include' });
+    const data = await res.json();
+
+    if (!data.logged_in) {
+      // Session no longer valid — bounce to login rather than let the
+      // user keep interacting with a UI that can't actually do anything.
+      showToast('Your session has ended. Please log in again.');
+      setTimeout(() => window.location.reload(), 1500);
+      return;
+    }
+
+    const changed = data.role !== currentRole
+      || JSON.stringify(data.permissions) !== JSON.stringify(currentPermissions);
+    if (!changed) return;
+
+    setPermissions(data.role, data.permissions);
+    showToast('Your permissions were updated by an admin');
+
+    // The screen currently open may no longer be allowed — same checks
+    // navigate() itself would apply, just re-run reactively here.
+    if (currentPage === 'clients' && !can('view_clients')) navigate('dashboard');
+    if (currentPage === 'logs' && !isAdmin())               navigate('dashboard');
+    if (currentPage === 'queries'
+        && !can(queriesView === 'followups' ? 'view_followups' : 'view_records')) {
+      navigate('dashboard');
+    }
+  } catch(e) { /* swallow — background check, not user-initiated */ }
 }
 
 function localDateStr() {
@@ -98,7 +136,7 @@ function navigate(page) {
   // denied navigation leaves the current screen exactly as it was instead
   // of flashing the target page before bouncing back.
   if (page === 'clients' && !can('view_clients')) { showPermissionDenied(); return; }
-  if (page === 'logs' && !can('view_logs')) { showPermissionDenied(); return; }
+  if (page === 'logs' && !isAdmin()) { showPermissionDenied(); return; }
   if (page === 'queries') {
     // The merged Queries page has two independently-gated sub-views. If
     // the one currently selected isn't allowed, fall back to the other
@@ -296,6 +334,7 @@ function fabAction(label) {
       return;
 
     case 'Quick Message':
+      if (!can('access_quick_message')) { showPermissionDenied(); return; }
       openQuickMessage();
       return;
 
@@ -327,6 +366,7 @@ function fabAction(label) {
       return;
 
     case 'File Manager':
+      if (!can('access_file_manager')) { showPermissionDenied(); return; }
       openFileManager();
       return;
 
@@ -430,7 +470,7 @@ function applyPermissionUI() {
   document.querySelector('.nav-item[data-page="queries"]')?.classList.toggle('perm-hidden', !can('view_records') && !can('view_followups'));
   document.querySelector('#queriesToggle .queries-toggle__btn[data-view="records"]')?.classList.toggle('perm-hidden', !can('view_records'));
   document.querySelector('#queriesToggle .queries-toggle__btn[data-view="followups"]')?.classList.toggle('perm-hidden', !can('view_followups'));
-  document.getElementById('viewLogsRow')?.classList.toggle('perm-hidden', !can('view_logs'));
+  document.getElementById('viewLogsRow')?.classList.toggle('perm-hidden', !isAdmin());
 }
 
 /* ---- PERMISSION DENIED / CONFIRM MODALS (generic, reused everywhere) ---- */
@@ -1068,8 +1108,29 @@ function confirmDeleteClient() {
         closeModal('clientDetailModal');
         loadClients();
       } catch (e) {
-        if (e.status === 403) showPermissionDenied();
-        else showToast('Failed to delete client');
+        if (e.status === 403) { showPermissionDenied(); return; }
+        // Fail-safe: this client has existing records attached. Ask for
+        // an explicit second confirmation before forcing it through,
+        // instead of silently orphaning those records.
+        if (e.status === 409 && e.body && e.body.has_records) {
+          showConfirm(
+            'This client has records',
+            `${e.body.record_count} record(s) are attached to ${c.firmname || c.clientname}. Delete the client anyway? Its records will remain but the client will be archived.`,
+            async () => {
+              try {
+                await API.deleteClient(c.id, true);
+                showToast('Client deleted');
+                closeModal('clientDetailModal');
+                loadClients();
+              } catch (e2) {
+                if (e2.status === 403) showPermissionDenied();
+                else showToast('Failed to delete client');
+              }
+            }
+          );
+          return;
+        }
+        showToast('Failed to delete client');
       }
     }
   );
@@ -1577,21 +1638,29 @@ function filterFollowups(filter, btn) {
 }
 
 async function markFollowupDone(id) {
+  if (!can('can_update_followup_status')) { showPermissionDenied(); return; }
   try {
     await API.updateFollowup({ id, status: 'done' });
     showToast('Marked as complete');
     closeModal('followupDetailModal');
     loadFollowups();
-  } catch(e) { showToast('Failed to update'); }
+  } catch(e) {
+    if (e.status === 403) showPermissionDenied();
+    else showToast('Failed to update');
+  }
 }
 
 async function markFollowupCancelled(id) {
+  if (!can('can_update_followup_status')) { showPermissionDenied(); return; }
   try {
     await API.updateFollowup({ id, status: 'cancelled' });
     showToast('Follow-up cancelled');
     closeModal('followupDetailModal');
     loadFollowups();
-  } catch(e) { showToast('Failed to update'); }
+  } catch(e) {
+    if (e.status === 403) showPermissionDenied();
+    else showToast('Failed to update');
+  }
 }
 
 
@@ -1680,7 +1749,8 @@ function openFollowupDetail(f) {
   // hood) gets the full action set: Cancel, Complete, then Back. Anything
   // already resolved (done/cancelled) just gets a Back button.
   const footer = document.getElementById('frdm-footer');
-  footer.innerHTML = status === 'pending'
+  const canUpdateStatus = can('can_update_followup_status');
+  footer.innerHTML = (status === 'pending' && canUpdateStatus)
     ? `<button class="btn btn-danger" style="flex:1" onclick="markFollowupCancelled(${f.id})">Cancelled</button>
        <button class="btn btn-primary" style="flex:1" onclick="markFollowupDone(${f.id})">Complete</button>
        <button class="btn btn-ghost" style="flex:1" onclick="closeModal('followupDetailModal')">Back</button>`
@@ -2421,7 +2491,9 @@ function openRenewalDetail(id) {
     ${rawPhone
       ? `<a class="btn btn-ghost" style="flex:1;text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center;" href="tel:${rawPhone}">Call</a>`
       : ''}
-    <button class="btn btn-primary" style="flex:1" onclick="sendRenewalReminderFromDetail()">Send Reminder</button>
+    ${can('can_send_reminder')
+      ? `<button class="btn btn-primary" style="flex:1" onclick="sendRenewalReminderFromDetail()">Send Reminder</button>`
+      : ''}
     <button class="btn btn-ghost" style="flex:1" onclick="closeModal('renewalDetailModal')">Close</button>`;
 
   openModal('renewalDetailModal');
@@ -2560,6 +2632,7 @@ function renderSystemIdResult(data) {
 // pre-filled with this client and the Renewal Reminder template.
 async function sendRenewalReminderFromDetail() {
   if (!_renewalDetailClient) return;
+  if (!can('can_send_reminder')) { showPermissionDenied(); return; }
   const c = _renewalDetailClient;
 
   closeModal('renewalDetailModal');
@@ -3128,6 +3201,7 @@ const RECORD_TYPE_DEFAULT = {
 // Shortcut from the record detail popup straight into Quick Message,
 // pre-filled with this record's client (mirrors sendRenewalReminderFromDetail).
 async function sendRecordMessageFromDetail(clientname) {
+  if (!can('access_quick_message')) { showPermissionDenied(); return; }
   closeModal('recordDetailModal');
   openModal('quickMessageModal');
 
@@ -3546,23 +3620,28 @@ async function saveAddUser() {
 const PERMISSION_GROUPS = [
   { title: 'Clients',    keys: ['can_add_client', 'can_edit_client', 'can_delete_client'] },
   { title: 'Records',    keys: ['can_add_record', 'can_edit_record', 'can_delete_record'] },
-  { title: 'Follow-ups', keys: ['can_add_followup', 'can_edit_followup', 'can_delete_followup'] },
+  { title: 'Follow-ups', keys: ['can_add_followup', 'can_edit_followup', 'can_delete_followup', 'can_update_followup_status'] },
+  { title: 'Messaging',  keys: ['can_send_reminder', 'access_quick_message'] },
   { title: 'Phone Number Visibility', keys: ['view_phone_clients', 'view_phone_renewals', 'view_phone_followups'] },
-  { title: 'Screen Access', keys: ['access_renewals', 'access_inactive_clients', 'access_add_transaction', 'access_transaction_history', 'access_pending_records'] },
-  { title: 'View Access',   keys: ['view_clients', 'view_records', 'view_followups', 'view_logs'] },
+  { title: 'Screen Access', keys: ['access_renewals', 'access_inactive_clients', 'access_add_transaction', 'access_transaction_history', 'access_pending_records', 'access_file_manager'] },
+  { title: 'View Access',   keys: ['view_clients', 'view_records', 'view_followups'] },
 ];
+// Logs isn't in any group above — it's hard admin-only (see api/logs.php),
+// same as Add User / Set User / Archives, so it never appears as a toggle.
 
 const PERMISSION_LABELS = {
   can_add_client: 'Add Client', can_edit_client: 'Edit Client', can_delete_client: 'Delete Client',
   can_add_record: 'Add Record', can_edit_record: 'Edit Record', can_delete_record: 'Delete Record',
   can_add_followup: 'Add Follow-up', can_edit_followup: 'Edit Follow-up', can_delete_followup: 'Delete Follow-up',
+  can_update_followup_status: 'Complete / Cancel Follow-up',
+  can_send_reminder: 'Send Reminder (Renewal Details)', access_quick_message: 'Quick Message screen',
   view_phone_clients: 'Show phone in Clients list & detail', view_phone_renewals: 'Show phone in Renewal Details',
   view_phone_followups: 'Show phone in Follow-ups',
   access_renewals: 'Upcoming Renewals', access_inactive_clients: 'Inactive Clients',
   access_add_transaction: 'Add Transaction', access_transaction_history: 'Transaction History',
-  access_pending_records: 'Pending Records',
+  access_pending_records: 'Pending Records', access_file_manager: 'File Manager screen',
   view_clients: 'View Clients screen', view_records: 'View Records screen',
-  view_followups: 'View Follow-ups screen', view_logs: 'View Logs screen',
+  view_followups: 'View Follow-ups screen',
 };
 
 function roleLabel(role) {
@@ -3594,6 +3673,7 @@ function renderSetUserList() {
         <div class="item-avatar">${initial}</div>
         <div class="item-body">
           <div class="item-title">${esc(u.username)}</div>
+          <div class="item-sub">${lastActiveLabel(u.last_active)}</div>
         </div>
         <div class="client-item-right">
           <span class="badge badge-active">${esc(roleLabel(u.role))}</span>
@@ -3601,6 +3681,24 @@ function renderSetUserList() {
       </button>
     `;
   }, 'No staff accounts yet');
+}
+
+// Finer-grained than timeAgo() (which only buckets by day) — useful here
+// specifically for spotting stale/unused logins, so minutes/hours matter
+// for anything recent.
+function lastActiveLabel(dateStr) {
+  if (!dateStr) return 'Never logged in';
+  const date = new Date(dateStr.replace(' ', 'T'));
+  const diffMs = Date.now() - date.getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1)   return 'Active just now';
+  if (mins < 60)  return `Active ${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `Active ${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'Active yesterday';
+  if (days < 30)  return `Active ${days}d ago`;
+  return `Last active ${date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}`;
 }
 
 function openUserPermissionsEditor(uid) {

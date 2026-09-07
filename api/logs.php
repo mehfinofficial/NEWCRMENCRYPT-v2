@@ -7,7 +7,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { jsonOut([]); }
 
 $pdo = getDB();
 requireAuth($pdo);
-requirePermission($pdo, 'view_logs');
+// Logs is admin-only, hard-coded rather than a Set User toggle — same
+// reasoning as Add User/Set User/Archives: this can reveal every action
+// taken by every account, so it isn't something a permission checkbox
+// should be able to grant.
+if (getUserRole($pdo) !== 'admin') {
+    jsonOut(['error' => 'Admin access required'], 403);
+}
 $pdo->exec("CREATE TABLE IF NOT EXISTS logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     message TEXT NOT NULL,

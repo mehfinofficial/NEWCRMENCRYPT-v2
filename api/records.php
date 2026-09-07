@@ -395,7 +395,11 @@ if ($method === 'POST') {
         if (!$row) jsonOut(['error' => 'Record not found'], 404);
         // Soft delete — recoverable from Archives for 30 days, same pattern
         // as clients.php, rather than an immediate unrecoverable DELETE.
-        $pdo->prepare("UPDATE transactions SET deleted_at = ? WHERE id = ?")->execute([date('Y-m-d H:i:s'), $id]);
+        $deletedAt = date('Y-m-d H:i:s');
+        $pdo->prepare("UPDATE transactions SET deleted_at = ? WHERE id = ?")->execute([$deletedAt, $id]);
+        // Any files attached to this record archive right along with it —
+        // they'll come back together on restore and expire together too.
+        archiveRecordFiles($pdo, $id, $deletedAt);
         logAction($pdo, "Record deleted: " . ($row['servicename'] ?: 'Payment') . " for " . $row['account'] . " (id=$id)");
         jsonOut(['success' => true]);
     }
