@@ -1011,17 +1011,34 @@ function openClientDetail(c) {
       <div id="cd-ledger-list"></div>
     </div>
   `;
-  // Wire up Call & Chat footer buttons
+  // Wire up Call & Chat footer buttons — multi-number aware, same picker
+  // pattern as the other five call/chat entry points. Single number (or
+  // none) keeps the plain href with no JS in the way, exactly as before;
+  // multiple numbers intercept the click and route through the picker.
+  // Handlers are cleared (: null) on the single/no-number branch since
+  // these buttons are reused across opens for different clients.
   const callBtn = document.getElementById('cdCallBtn');
   const chatBtn = document.getElementById('cdChatBtn');
-  const phone = (c.contact || '').replace(/\D/g, '');
+  const phoneOptions      = getClientPhoneOptions(c);
+  const hasMultiplePhones = phoneOptions.length > 1;
+  const phone = (phoneOptions[0]?.value || c.contact || '').replace(/\D/g, '');
   const wa    = (c.whatsapp || c.contact || '').replace(/\D/g, '');
-  callBtn.href = phone ? `tel:${phone}` : '#';
-  callBtn.style.opacity = phone ? '1' : '0.4';
-  callBtn.style.pointerEvents = phone ? 'auto' : 'none';
-  chatBtn.href = wa ? `https://wa.me/${wa}` : '#';
-  chatBtn.style.opacity = wa ? '1' : '0.4';
-  chatBtn.style.pointerEvents = wa ? 'auto' : 'none';
+
+  callBtn.href = hasMultiplePhones ? '#' : (phone ? `tel:${phone}` : '#');
+  callBtn.style.opacity = (hasMultiplePhones || phone) ? '1' : '0.4';
+  callBtn.style.pointerEvents = (hasMultiplePhones || phone) ? 'auto' : 'none';
+  callBtn.onclick = hasMultiplePhones ? (e) => {
+    e.preventDefault();
+    startPhoneCall(c, c.contact, `Call ${c.firmname || c.clientname}`);
+  } : null;
+
+  chatBtn.href = hasMultiplePhones ? '#' : (wa ? `https://wa.me/${wa}` : '#');
+  chatBtn.style.opacity = (hasMultiplePhones || wa) ? '1' : '0.4';
+  chatBtn.style.pointerEvents = (hasMultiplePhones || wa) ? 'auto' : 'none';
+  chatBtn.onclick = hasMultiplePhones ? (e) => {
+    e.preventDefault();
+    startWhatsAppChat(c, c.whatsapp || c.contact, `Chat with ${c.firmname || c.clientname}`);
+  } : null;
   openModal('clientDetailModal');
   loadClientLedger(c.clientname);
 }
@@ -1270,10 +1287,17 @@ function renderRecords(records) {
     const statusBadge = badgeHtml(r.status || 'pending');
     const sub = [r.servicename, timeAgo(r.transdate)].filter(Boolean).join(' · ');
     const status = r.status || 'pending';
-    const client = allClients.find(c => c.clientname === r.account);
-    const phone  = (client?.contact || client?.whatsapp || '').replace(/\D/g, '');
-    const callBtn = (status === 'pending' && phone)
-      ? `<a class="item-call-btn" href="tel:${phone}" onclick="event.stopPropagation()" aria-label="Call">
+    const client  = allClients.find(c => c.clientname === r.account);
+    // Multi-number aware: getClientPhoneOptions covers whatsapp/contact/
+    // extra_contacts, same source the Quick Message "Send To" dropdown
+    // uses, instead of only ever offering the primary contact number.
+    const phoneOptions = client ? getClientPhoneOptions(client) : [];
+    const hasMultiplePhones = phoneOptions.length > 1;
+    const singlePhone = (phoneOptions[0]?.value || '').replace(/\D/g, '');
+    const callBtn = (status === 'pending' && phoneOptions.length)
+      ? `<a class="item-call-btn" href="${hasMultiplePhones ? '#' : 'tel:' + singlePhone}"
+           onclick="event.stopPropagation();${hasMultiplePhones ? `event.preventDefault();startRecordCallById(${JSON.stringify(r.id)});` : ''}"
+           aria-label="Call">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12 19.79 19.79 0 0 1 1.93 3.4 2 2 0 0 1 3.92 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9a16 16 0 0 0 6.91 6.91l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 23 17z"/></svg>
         </a>`
       : '';
@@ -1292,6 +1316,16 @@ function renderRecords(records) {
   }, 'No records found', fetchMoreRecords);
 }
 
+
+// Pending Records call icon — record rows only carry the account name,
+// so resolve the linked client fresh (allRecords/allClients are both
+// already in memory by the time this fires).
+function startRecordCallById(id) {
+  const r = allRecords.find(x => String(x.id) === String(id));
+  if (!r) return;
+  const client = allClients.find(c => c.clientname === r.account);
+  startPhoneCall(client, client?.contact || client?.whatsapp, `Call ${client?.firmname || r.account}`);
+}
 
 function timeAgo(dateStr) {
   if (!dateStr) return '';
@@ -1738,6 +1772,20 @@ function openFollowupDetail(f) {
   // that field break out of the attribute, same bug class as the onclick
   // issue fixed earlier. Stripping to digits closes it off entirely.
   const callHref = rawPhone ? `tel:${rawPhone}` : null;
+
+  // A follow-up only ever stores one denormalised phonenumber — multi-
+  // number selection has to come from the linked client record itself, so
+  // look that up when this is a client follow-up. (allClients is already
+  // permission-masked server-side, same as everywhere else it's used.)
+  // Gated on view_phone_followups specifically, not view_phone_clients —
+  // a user who can see numbers on the Clients tab but not on Follow-ups
+  // shouldn't get client phone numbers leaking in through this lookup.
+  const linkedClient = (isClient && can('view_phone_followups'))
+    ? (_followupClients.length ? _followupClients : allClients).find(c => c.clientname === f.clientname)
+    : null;
+  const phoneOptions = linkedClient ? getClientPhoneOptions(linkedClient) : [];
+  const hasMultiplePhones = phoneOptions.length > 1;
+  const showCallBtn = !!callHref || hasMultiplePhones;
  
   /* ── Reminder urgency label ── */
   const urgency = urgencyLabel(f.reminderdate);
@@ -1778,10 +1826,10 @@ function openFollowupDetail(f) {
     </div>
  
     <!-- Call / WhatsApp row — subtle, below the info -->
-    ${(callHref || waHref) ? `
+    ${(showCallBtn || waHref) ? `
     <div class="frdm-actions">
-      ${callHref ? `
-        <a class="btn btn-ghost frdm-action-btn" href="${callHref}">
+      ${showCallBtn ? `
+        <a id="frdmCallBtn" class="btn btn-ghost frdm-action-btn" href="${hasMultiplePhones ? '#' : callHref}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:5px;vertical-align:middle"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12 19.79 19.79 0 0 1 1.93 3.4 2 2 0 0 1 3.92 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9a16 16 0 0 0 6.91 6.91l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 23 17z"/></svg>Call
         </a>` : ''}
       ${waHref ? `
@@ -1790,6 +1838,22 @@ function openFollowupDetail(f) {
         </a>` : ''}
     </div>` : ''}
   `;
+
+  // Multi-number client: intercept the Call button and route through the
+  // number picker instead of navigating straight off the plain tel: href.
+  // Single-number (or non-client) follow-ups keep the plain href — no JS
+  // in the way, same as before this feature.
+  const callBtnEl = document.getElementById('frdmCallBtn');
+  if (callBtnEl) {
+    if (hasMultiplePhones) {
+      callBtnEl.onclick = (e) => {
+        e.preventDefault();
+        startPhoneCall(linkedClient, rawPhone, `Call ${displayName}`);
+      };
+    } else {
+      callBtnEl.onclick = null;
+    }
+  }
  
   /* ── Footer ── */
   // Pending (including overdue, which is still status 'pending' under the
@@ -2098,8 +2162,17 @@ function followupItem(f) {
   // Same "day · status pill" pattern for both client and non-client cards.
   const sub   = `${esc(day)} · ${badgeHtml(followupDisplayStatus(f))}`;
   const phone = (f.phonenumber || '').replace(/\D/g, '');
-  const callBtn = phone
-    ? `<a class="item-call-btn" href="tel:${phone}" onclick="event.stopPropagation()" aria-label="Call">
+  // Same multi-number lookup as the follow-up detail modal: a client
+  // follow-up's own phonenumber is just a snapshot, so check the linked
+  // client record (already permission-masked) for extra numbers.
+  const linkedClient = (hasClient && can('view_phone_followups'))
+    ? allClients.find(c => c.clientname === f.clientname)
+    : null;
+  const hasMultiplePhones = linkedClient ? getClientPhoneOptions(linkedClient).length > 1 : false;
+  const callBtn = (phone || hasMultiplePhones)
+    ? `<a class="item-call-btn" href="${hasMultiplePhones ? '#' : 'tel:' + phone}"
+         onclick="event.stopPropagation();${hasMultiplePhones ? `event.preventDefault();startFollowupCallById(${JSON.stringify(f.id)});` : ''}"
+         aria-label="Call">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.99 12 19.79 19.79 0 0 1 1.93 3.4 2 2 0 0 1 3.92 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9a16 16 0 0 0 6.91 6.91l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 23 17z"/></svg>
       </a>`
     : '';
@@ -2126,6 +2199,22 @@ async function openFollowupDetailFromDashboard(id) {
     f = allFollowups.find(x => x.id === id);
   }
   if (f) openFollowupDetail(f);
+}
+
+// Follow-up card's call icon — same id-lookup-then-reload pattern as
+// openFollowupDetailFromDashboard, since the dashboard's follow-up
+// payload is a lighter-weight fetch than the full Follow-ups list.
+async function startFollowupCallById(id) {
+  let f = allFollowups.find(x => x.id === id);
+  if (!f) {
+    await loadFollowups();
+    f = allFollowups.find(x => x.id === id);
+  }
+  if (!f) return;
+  const isClient = f.type === 'client' && f.clientname;
+  const linkedClient = isClient ? allClients.find(c => c.clientname === f.clientname) : null;
+  const displayName = isClient ? (f.clientname || f.phonenumber) : f.phonenumber;
+  startPhoneCall(linkedClient, f.phonenumber, `Call ${displayName}`);
 }
 
 function clearForm(ids) {
@@ -2360,6 +2449,81 @@ document.addEventListener('click', (e) => {
   }
 });
 
+/* ========================
+   NUMBER PICKER (generic)
+   ======================== */
+// Shared disambiguation step for every call/message action that touches a
+// client's phone number: Send Reminder (renewals), the follow-up detail
+// Call button, the follow-up card call icon, and the Pending Records call
+// icon. Single-number (or no-number) clients never see this — it only
+// exists for the multi-number case, same "one number = no extra step"
+// behaviour those features already had.
+//
+// `options` is whatever getClientPhoneOptions() returned (label/value
+// pairs); `onSelect(option)` runs once the user taps a row. Listeners are
+// bound fresh on every open (not delegated) since the list is rebuilt
+// each time and there's only ever one number picker on screen.
+function openNumberPicker(title, options, onSelect) {
+  document.getElementById('npTitle').textContent = title || 'Choose a number';
+  const list = document.getElementById('npList');
+  list.innerHTML = options.map((o, i) => `
+    <button type="button" class="np-option" data-idx="${i}">
+      <span class="np-option-label">${esc(o.label)}</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+  `).join('');
+  list.querySelectorAll('.np-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx, 10);
+      closeModal('numberPickerModal');
+      onSelect(options[idx]);
+    });
+  });
+  openModal('numberPickerModal');
+}
+
+// Entry point for the plain "place a call" actions (follow-up detail,
+// follow-up card, Pending Records). `client` is the full client record
+// (so getClientPhoneOptions can see extra_contacts); `fallbackPhone` is
+// used when there's no linked client record at all — e.g. a "New Follow
+// Up" that was never tied to a client, just a raw number on the
+// follow-up itself, where multi-number selection doesn't apply.
+// Nothing here bypasses the server-side phone masking: if the user lacks
+// view_phone_* permission the API already stripped contact/whatsapp/
+// extra_contacts/phonenumber to null before this ever runs, so `client`
+// carries no numbers and this silently no-ops via the "no phone" toast.
+function startPhoneCall(client, fallbackPhone, title) {
+  const options = client ? getClientPhoneOptions(client) : [];
+  if (options.length > 1) {
+    openNumberPicker(title || 'Choose a number to call', options, (o) => {
+      const digits = (o.value || '').replace(/\D/g, '');
+      if (digits) window.location.href = `tel:${digits}`;
+    });
+    return;
+  }
+  const digits = (options[0]?.value || fallbackPhone || '').replace(/\D/g, '');
+  if (digits) window.location.href = `tel:${digits}`;
+  else showToast('No phone number on file');
+}
+
+// Same shape as startPhoneCall but opens WhatsApp instead of dialing.
+// Used by the Client Details "Chat" button — the one call/chat entry
+// point where a client's WhatsApp number can differ from their other
+// numbers, so it needs its own picker rather than reusing startPhoneCall.
+function startWhatsAppChat(client, fallbackPhone, title) {
+  const options = client ? getClientPhoneOptions(client) : [];
+  if (options.length > 1) {
+    openNumberPicker(title || 'Choose a number to chat with', options, (o) => {
+      const digits = (o.value || '').replace(/\D/g, '');
+      if (digits) window.open(`https://wa.me/${digits}`, '_blank');
+    });
+    return;
+  }
+  const digits = (options[0]?.value || fallbackPhone || '').replace(/\D/g, '');
+  if (digits) window.open(`https://wa.me/${digits}`, '_blank');
+  else showToast('No phone number on file');
+}
+
 // Fills {name}/{firm}/{renewal_date}/{system_id} placeholders with the
 // selected client's actual data.
 function fillMessageTemplate(body, client) {
@@ -2571,11 +2735,20 @@ function openRenewalDetail(id) {
     </div>
   `;
 
-  const rawPhone = (c.contact || '').replace(/\D/g, '');
+  // Multi-number aware, same as the Send Reminder button just below it:
+  // getClientPhoneOptions covers whatsapp/contact/extra_contacts, and if
+  // the user lacks view_phone_renewals the API already masked those to
+  // null, so phoneOptions comes back empty and this button doesn't render
+  // — same permission story as before, just no longer single-number-only.
+  const phoneOptions       = getClientPhoneOptions(c);
+  const hasMultiplePhones  = phoneOptions.length > 1;
+  const singlePhone        = (phoneOptions[0]?.value || '').replace(/\D/g, '');
   const footer = document.getElementById('renewalDetailFooter');
   footer.innerHTML = `
-    ${rawPhone
-      ? `<a class="btn btn-ghost" style="flex:1;text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center;" href="tel:${rawPhone}">Call</a>`
+    ${phoneOptions.length
+      ? `<a class="btn btn-ghost" style="flex:1;text-decoration:none;text-align:center;display:flex;align-items:center;justify-content:center;"
+           href="${hasMultiplePhones ? '#' : 'tel:' + singlePhone}"
+           onclick="${hasMultiplePhones ? "event.preventDefault();startRenewalDetailCall();" : ''}">Call</a>`
       : ''}
     ${can('can_send_reminder')
       ? `<button class="btn btn-primary" style="flex:1" onclick="sendRenewalReminderFromDetail()">Send Reminder</button>`
@@ -2583,6 +2756,18 @@ function openRenewalDetail(id) {
     <button class="btn btn-ghost" style="flex:1" onclick="closeModal('renewalDetailModal')">Close</button>`;
 
   openModal('renewalDetailModal');
+}
+
+// Renewal detail modal's own Call button (separate from Send Reminder).
+// Reads from _renewalDetailClient rather than taking the client/title as
+// inline-onclick arguments — same reason startRecordCallById/
+// startFollowupCallById take an id instead: firmname/clientname can
+// contain a quote character, which would break out of the onclick
+// attribute string if interpolated directly.
+function startRenewalDetailCall() {
+  if (!_renewalDetailClient) return;
+  const c = _renewalDetailClient;
+  startPhoneCall(c, c.contact || c.whatsapp, `Call ${c.firmname || c.clientname}`);
 }
 
 /* ========================
@@ -2715,27 +2900,40 @@ function renderSystemIdResult(data) {
 }
 
 // Shortcut from the renewal detail popup straight into Quick Message,
-// pre-filled with this client and the Renewal Reminder template.
+// pre-filled with this client and the Renewal Reminder template. A client
+// with more than one number on file gets the number picker first — Quick
+// Message only opens once a number has actually been chosen; a
+// single-number client skips straight to Quick Message as before.
 async function sendRenewalReminderFromDetail() {
   if (!_renewalDetailClient) return;
   if (!can('can_send_reminder')) { showPermissionDenied(); return; }
   const c = _renewalDetailClient;
 
-  closeModal('renewalDetailModal');
-  closeModal('renewalsModal');
-  openModal('quickMessageModal');
+  const proceedWithNumber = async (chosenPhone) => {
+    closeModal('renewalDetailModal');
+    closeModal('renewalsModal');
+    openModal('quickMessageModal');
 
-  await populateQuickMessageClients();
-  await populateQuickMessageTemplates();
+    await populateQuickMessageClients();
+    await populateQuickMessageTemplates();
 
-  document.getElementById('qm_account').value = c.clientname;
-  document.getElementById('qm_account_search').value = c.firmname || c.clientname;
-  populateQmNumberDropdown(c);
+    document.getElementById('qm_account').value = c.clientname;
+    document.getElementById('qm_account_search').value = c.firmname || c.clientname;
+    populateQmNumberDropdown(c);
+    if (chosenPhone) document.getElementById('qm_number').value = chosenPhone;
 
-  const tmpl = _qmTemplates.find(t => t.name === 'Renewal Reminder');
-  if (tmpl) document.getElementById('qm_template').value = tmpl.id;
+    const tmpl = _qmTemplates.find(t => t.name === 'Renewal Reminder');
+    if (tmpl) document.getElementById('qm_template').value = tmpl.id;
 
-  previewQuickMessage();
+    previewQuickMessage();
+  };
+
+  const options = getClientPhoneOptions(c);
+  if (options.length > 1) {
+    openNumberPicker(`Send reminder to ${c.firmname || c.clientname}`, options, (o) => proceedWithNumber(o.value));
+  } else {
+    proceedWithNumber(options[0]?.value || '');
+  }
 }
 
 /* ========================

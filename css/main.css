@@ -1195,6 +1195,44 @@ body.no-scroll { overflow: hidden; height: 100dvh; }
 }
 
 /* ========================
+   NUMBER PICKER (multi-phone call/message disambiguation)
+   ======================== */
+.np-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.np-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: var(--transition);
+}
+.np-option:hover,
+.np-option:active {
+  background: rgba(137,213,45,.12);
+  border-color: var(--accent);
+}
+.np-option-label { display: flex; flex-direction: column; gap: 2px; }
+.np-option-label .np-option-sub {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+.np-option svg { flex-shrink: 0; color: var(--text-secondary); }
+
+/* ========================
    BUTTONS
    ======================== */
 .btn {

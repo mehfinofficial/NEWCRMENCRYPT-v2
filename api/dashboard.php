@@ -118,6 +118,16 @@ $followStmt = $pdo->prepare("
 $followStmt->execute([$today]);
 $followupToday = $followStmt->fetchAll();
 
+// Mask phone numbers here per the same view_phone_followups permission
+// followups.php already enforces on the Follow-ups tab — this dashboard
+// card reads from the same table and was returning phonenumber
+// unconditionally, which let a restricted user see numbers here that
+// were correctly hidden everywhere else.
+if (!getUserPermissions($pdo)['view_phone_followups']) {
+    foreach ($followupToday as &$fu) { $fu['phonenumber'] = null; }
+    unset($fu);
+}
+
 // Last 7 days chart
 $chart = [];
 for ($i = 6; $i >= 0; $i--) {
