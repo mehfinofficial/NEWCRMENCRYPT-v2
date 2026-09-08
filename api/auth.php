@@ -38,6 +38,10 @@ if ($action === 'check') {
     purgeExpiredArchives($pdo);
 
     if (!empty($_SESSION['userid'])) {
+        // Same enable/disable + login-hours check requireAuth() applies to
+        // every other endpoint — this endpoint doesn't call requireAuth()
+        // itself, so it needs its own check here too.
+        enforceAccountAccess($pdo);
         jsonOut([
             'logged_in'   => true,
             'userid'      => (int)$_SESSION['userid'],
@@ -115,7 +119,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'login') {
     }
 
     // ── Fetch user ───────────────────────────────────────
-    $stmt = $pdo->prepare("SELECT uid, username, password FROM users WHERE username = ? LIMIT 1");
+    ensureUserAccessColumns($pdo);
+    $stmt = $pdo->prepare("SELECT uid, username, password, role, active, login_hours_enabled, login_start, login_end FROM users WHERE username = ? LIMIT 1");
     $stmt->execute([$username]);
     $user = $stmt->fetch();
 
@@ -146,6 +151,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'login') {
             : "Too many failed attempts. Please try again after {$lockMinutes} minutes.";
 
         jsonOut(['success' => false, 'error' => $msg], 401);
+    }
+
+    // ── Account enabled + login-hours window (checked after password so a
+    // wrong password never leaks whether the account exists/is disabled) ──
+    if ((int)$user['active'] === 0) {
+        jsonOut(['success' => false, 'error' => 'Your account has been disabled. Contact your admin.'], 403);
+    }
+    if ($user['role'] !== 'admin' && !empty($user['login_hours_enabled'])) {
+        $winStart = $user['login_start'] ?: '09:00';
+        $winEnd   = $user['login_end']   ?: '19:00';
+        if (!isWithinLoginWindow($winStart, $winEnd)) {
+            jsonOut([
+                'success' => false,
+                'error'   => 'Login is only available between ' . formatTime12($winStart) . ' and ' . formatTime12($winEnd) . '.',
+            ], 403);
+        }
     }
 
     // ── Login success — clear all past attempts for this user ──

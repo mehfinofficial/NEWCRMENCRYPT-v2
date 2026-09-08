@@ -68,7 +68,7 @@ const API = {
   async addClient(data)         { return this.post('clients.php', { action: 'add', ...data }); },
   async getClient(id)           { return this.get('clients.php', { id }); },
   async updateClient(data)      { return this.post('clients.php', { action: 'update', ...data }); },
-  async deleteClient(id, force = false) { return this.post('clients.php', { action: 'delete', id, force }); },
+  async deleteClient(id)        { return this.post('clients.php', { action: 'delete', id }); },
 
   // RECORDS
   async getRecords(params = {}) { return this.get('records.php', params); },
@@ -107,6 +107,8 @@ const API = {
   async addUser(data)            { return this.post('users.php', { action: 'add', ...data }); },
   async applyRolePreset(data)    { return this.post('users.php', { action: 'apply_role_preset', ...data }); },
   async setUserPermissions(data) { return this.post('users.php', { action: 'set_permissions', ...data }); },
+  async setUserActive(data)      { return this.post('users.php', { action: 'set_active', ...data }); },
+  async setUserLoginHours(data)  { return this.post('users.php', { action: 'set_login_hours', ...data }); },
 
   // ARCHIVES (Archives FAB — admin only)
   async getArchives()          { return this.get('archive.php'); },

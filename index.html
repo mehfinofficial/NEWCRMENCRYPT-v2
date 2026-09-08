@@ -537,7 +537,14 @@
         <div class="form-group"><label>Firm Name *</label><input type="text" id="c_firm" placeholder="Company / firm" /></div>
         <div class="form-group"><label>Address</label><textarea id="c_address" placeholder="Full address" rows="2"></textarea></div>
         <div class="form-group"><label>Client Name *</label><input type="text" id="c_name" placeholder="Full name" /></div>
-        <div class="form-group"><label>Contact *</label><input type="tel" id="c_contact" placeholder="+91 XXXXX XXXXX" /></div>
+        <div class="form-group">
+          <label>Contact *</label>
+          <div class="phone-field-row">
+            <input type="tel" id="c_contact" placeholder="+91 XXXXX XXXXX" />
+            <button type="button" class="btn-add-phone" onclick="addExtraPhoneField()" title="Add another phone number">+</button>
+          </div>
+          <div id="c_extra_phones"></div>
+        </div>
         <div class="form-group"><label>Email</label><input type="email" id="c_email" placeholder="email@example.com" /></div>
         <div class="form-group"><label>WhatsApp</label><input type="tel" id="c_whatsapp" placeholder="+91 XXXXX XXXXX" value="+91" /></div>
         <div class="form-group"><label>Renewal Date</label><input type="date" id="c_renewal_date" /></div>
@@ -657,6 +664,34 @@
             <span class="chip" data-role="viewer" onclick="applyRolePresetInEditor('viewer')">Viewer</span>
           </div>
         </div>
+
+        <div class="perm-group" id="upAccessGroup">
+          <div class="perm-group-title">Account Access</div>
+          <div class="access-toggle-row">
+            <div>
+              <div class="access-toggle-label">Account Enabled</div>
+              <div class="access-toggle-sub">Disabled accounts can't log in at all.</div>
+            </div>
+            <div class="perm-toggle" id="upActiveToggle" onclick="toggleUserActiveInEditor()">
+              <div class="perm-toggle-thumb"></div>
+            </div>
+          </div>
+          <div class="access-toggle-row" style="align-items:flex-start;">
+            <div style="flex:1;">
+              <div class="access-toggle-label">Login Hours Restriction</div>
+              <div class="access-toggle-sub" id="upLoginHoursSub">Only allow login between these hours.</div>
+              <div class="login-hours-times" id="upLoginHoursTimes" style="display:none;">
+                <input type="time" id="upLoginStart" onchange="onUserLoginTimeChange()" />
+                <span>to</span>
+                <input type="time" id="upLoginEnd" onchange="onUserLoginTimeChange()" />
+              </div>
+            </div>
+            <div class="perm-toggle" id="upLoginHoursToggle" onclick="toggleLoginHoursInEditor()">
+              <div class="perm-toggle-thumb"></div>
+            </div>
+          </div>
+        </div>
+
         <div id="userPermissionsBody"></div>
       </div>
       <div class="modal-footer">
@@ -869,6 +904,10 @@
           <div class="form-group">
             <label>Message Type *</label>
             <select id="qm_template"><option value="">Select template...</option></select>
+          </div>
+          <div class="form-group" id="qm_number_group" style="display:none;">
+            <label>Send To *</label>
+            <select id="qm_number"></select>
           </div>
         </div>
 

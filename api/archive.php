@@ -104,6 +104,7 @@ if ($method === 'POST') {
         // Purge the record's files first (disk + rows) so nothing orphans
         // in data/uploads once the record itself is gone.
         if ($type === 'transactions') { purgeRecordFiles($pdo, $id); }
+        if ($type === 'clients')      { purgeClientPhones($pdo, $id); }
         $pdo->prepare("DELETE FROM $table WHERE id = ?")->execute([$id]);
         logAction($pdo, ucfirst($type) . " permanently deleted: " . ($row['title'] ?: "#$id"));
         jsonOut(['success' => true]);

@@ -992,6 +992,56 @@ body.no-scroll { overflow: hidden; height: 100dvh; }
 }
 .form-group select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
 
+/* Multi-phone: Contact field's "+" button and the dynamic extra-number rows it reveals */
+.phone-field-row { display: flex; align-items: center; gap: 8px; }
+.phone-field-row input { flex: 1; }
+.btn-add-phone {
+  flex: 0 0 auto; width: 40px; height: 40px;
+  border-radius: var(--radius-sm); border: 1.5px solid var(--border);
+  background: var(--bg); color: var(--accent);
+  font-size: 20px; line-height: 1; font-weight: 600;
+  cursor: pointer; transition: var(--transition);
+}
+.btn-add-phone:hover { background: var(--accent-bg); border-color: var(--accent); }
+#c_extra_phones { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.extra-phone-row { display: flex; align-items: center; gap: 8px; }
+.extra-phone-row input { flex: 1; }
+.btn-remove-phone {
+  flex: 0 0 auto; width: 40px; height: 40px;
+  border-radius: var(--radius-sm); border: 1.5px solid var(--border);
+  background: var(--bg); color: var(--danger);
+  font-size: 20px; line-height: 1; font-weight: 600;
+  cursor: pointer; transition: var(--transition);
+}
+.btn-remove-phone:hover { background: rgba(239,68,68,.1); border-color: var(--danger); }
+
+/* Set User: Enable/Disable + login-hours access controls */
+.access-toggle-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 0;
+}
+.access-toggle-label { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.access-toggle-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.login-hours-times {
+  display: flex; align-items: center; gap: 10px; margin-top: 10px;
+}
+.login-hours-times input[type="time"] {
+  padding: 8px 10px; border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg); color: var(--text-primary); font-family: 'DM Sans', sans-serif; font-size: 13px;
+}
+.login-hours-times span { color: var(--text-secondary); font-size: 13px; }
+
+/* Permission-denied placeholder shown inside a screen's list area, instead
+   of hiding the nav entry point that got you there. */
+.permission-denied-inline {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; gap: 12px;
+  padding: 48px 24px; color: var(--text-secondary);
+}
+.permission-denied-inline svg { color: var(--text-secondary); opacity: .55; }
+.permission-denied-inline .pd-title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.permission-denied-inline .pd-sub { font-size: 13px; max-width: 280px; }
+
 /* File attach / dropzone (used by Add Record "Attach Files") */
 .filedrop {
   display: flex;

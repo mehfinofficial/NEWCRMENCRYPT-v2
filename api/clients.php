@@ -18,6 +18,37 @@ try {
     }
 } catch (Exception $e) {}
 
+ensureClientPhonesTable($pdo);
+
+// Extra phone numbers (beyond the primary `contact` field) for a set of
+// client ids, decrypted and grouped by client_id. Batched into one query
+// so listing/searching clients doesn't do N+1 lookups.
+function fetchExtraPhones(PDO $pdo, array $clientIds): array {
+    if (!$clientIds) return [];
+    $placeholders = implode(',', array_fill(0, count($clientIds), '?'));
+    $stmt = $pdo->prepare("SELECT client_id, phone FROM client_phones WHERE client_id IN ($placeholders) ORDER BY sort_order ASC, id ASC");
+    $stmt->execute($clientIds);
+    $byClient = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $byClient[(int)$row['client_id']][] = decryptField($row['phone']);
+    }
+    return $byClient;
+}
+
+// Replaces all extra phone numbers for a client with the given list.
+// Simplest correct approach at CRM-sized row counts: delete then re-insert
+// rather than diffing — matches the same "form is the source of truth"
+// pattern the rest of this file already uses for a client's other fields.
+function saveExtraPhones(PDO $pdo, int $clientId, array $phones): void {
+    $pdo->prepare("DELETE FROM client_phones WHERE client_id = ?")->execute([$clientId]);
+    $phones = array_values(array_filter(array_map('trim', $phones), fn($p) => $p !== ''));
+    if (!$phones) return;
+    $stmt = $pdo->prepare("INSERT INTO client_phones (client_id, phone, sort_order) VALUES (?, ?, ?)");
+    foreach ($phones as $i => $phone) {
+        $stmt->execute([$clientId, encryptField($phone), $i]);
+    }
+}
+
 // Decrypt the phone-number fields on a client row (or array of rows) before
 // it goes back to the browser, then mask them per the caller's permission.
 // $context distinguishes the two screens that both read from this same
@@ -25,14 +56,19 @@ try {
 // list/cards ('clients') vs the Renewal Details screen ('renewals'), which
 // reuses this same GET rather than having its own endpoint. Masking here
 // (not in app.js) so a restricted user can't just read the field out of
-// the network response.
-function decryptClient(array $client, bool $canViewPhone): array {
+// the network response. $extraPhones is the batched client_id => [phones]
+// map from fetchExtraPhones(), same masking rule as the primary contact.
+function decryptClient(array $client, bool $canViewPhone, array $extraPhones = []): array {
     $client['contact']  = maskPhone(decryptField($client['contact']  ?? null), $canViewPhone);
     $client['whatsapp'] = maskPhone(decryptField($client['whatsapp'] ?? null), $canViewPhone);
+    $extras = $extraPhones[(int)($client['id'] ?? 0)] ?? [];
+    $client['extra_contacts'] = $canViewPhone ? $extras : [];
     return $client;
 }
-function decryptClients(array $clients, bool $canViewPhone): array {
-    return array_map(fn($c) => decryptClient($c, $canViewPhone), $clients);
+function decryptClients(PDO $pdo, array $clients, bool $canViewPhone): array {
+    $ids    = array_map(fn($c) => (int)$c['id'], $clients);
+    $extras = fetchExtraPhones($pdo, $ids);
+    return array_map(fn($c) => decryptClient($c, $canViewPhone, $extras), $clients);
 }
 
 // Auto-migrate: add software columns if they don't exist yet
@@ -83,7 +119,8 @@ if ($method === 'GET') {
         $stmt = $pdo->prepare("SELECT * FROM clients WHERE id = ? AND deleted_at IS NULL");
         $stmt->execute([(int)$_GET['id']]);
         $client = $stmt->fetch();
-        jsonOut(['client' => $client ? decryptClient($client, $canViewPhone) : null]);
+        $extras = $client ? fetchExtraPhones($pdo, [(int)$client['id']]) : [];
+        jsonOut(['client' => $client ? decryptClient($client, $canViewPhone, $extras) : null]);
     }
 
     // Search / list clients.
@@ -107,16 +144,16 @@ if ($method === 'GET') {
         $matchedIds = array_column($stmt->fetchAll(), 'id');
 
         $all = $pdo->query("SELECT * FROM clients WHERE deleted_at IS NULL ORDER BY clientname ASC")->fetchAll();
-        $all = decryptClients($all, $canViewPhone);
+        $all = decryptClients($pdo, $all, $canViewPhone);
 
         $needle = strtolower($search);
         $clients = array_values(array_filter($all, function ($c) use ($matchedIds, $needle) {
             if (in_array($c['id'], $matchedIds, true)) return true;
-            $phone = strtolower(($c['contact'] ?? '') . ' ' . ($c['whatsapp'] ?? ''));
+            $phone = strtolower(($c['contact'] ?? '') . ' ' . ($c['whatsapp'] ?? '') . ' ' . implode(' ', $c['extra_contacts'] ?? []));
             return str_contains($phone, $needle);
         }));
     } else {
-        $clients = decryptClients($pdo->query("SELECT * FROM clients WHERE deleted_at IS NULL ORDER BY clientname ASC")->fetchAll(), $canViewPhone);
+        $clients = decryptClients($pdo, $pdo->query("SELECT * FROM clients WHERE deleted_at IS NULL ORDER BY clientname ASC")->fetchAll(), $canViewPhone);
     }
     jsonOut(['clients' => $clients]);
 }
@@ -162,6 +199,7 @@ if ($method === 'POST') {
         // Capture the id before logAction() (its own INSERT into `logs`
         // would otherwise clobber lastInsertId() with the wrong row's id).
         $newClientId = $pdo->lastInsertId();
+        saveExtraPhones($pdo, (int)$newClientId, $body['extra_contacts'] ?? []);
         logAction($pdo, "New client added: " . ($body['firmname'] ?? $body['clientname'] ?? ''));
         jsonOut(['success' => true, 'id' => $newClientId]);
     }
@@ -207,43 +245,39 @@ if ($method === 'POST') {
             ':software_version'  => $body['software_version']  ?? null,
             ':id'                => $id,
         ]);
+        saveExtraPhones($pdo, $id, $body['extra_contacts'] ?? []);
         logAction($pdo, "Client updated: " . ($body['clientname'] ?? '') . " (id=$id)");
         jsonOut(['success' => true]);
     }
 
     if ($action === 'delete') {
         requirePermission($pdo, 'can_delete_client');
-        $id    = (int)($body['id'] ?? 0);
-        $force = !empty($body['force']);
+        $id = (int)($body['id'] ?? 0);
         if (!$id) jsonOut(['error' => 'Invalid ID'], 400);
         $stmt = $pdo->prepare("SELECT clientname FROM clients WHERE id = ? AND deleted_at IS NULL");
         $stmt->execute([$id]);
         $client = $stmt->fetch();
         if (!$client) jsonOut(['error' => 'Client not found'], 404);
 
-        // Fail-safe: a client with existing records can't be deleted by
-        // accident. First attempt (no force flag) just reports the count
-        // back so the frontend can warn and ask to confirm; only a second,
-        // explicit force:true request actually deletes.
-        if (!$force) {
-            $countStmt = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE account = ? AND deleted_at IS NULL");
-            $countStmt->execute([$client['clientname']]);
-            $recordCount = (int)$countStmt->fetchColumn();
-            if ($recordCount > 0) {
-                jsonOut([
-                    'success'      => false,
-                    'has_records'  => true,
-                    'record_count' => $recordCount,
-                    'error'        => "This client has $recordCount record(s). Delete anyway?",
-                ], 409);
-            }
+        // Hard block: a client with existing records can never be deleted,
+        // by anyone, no override. Records must be removed/reassigned first.
+        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE account = ? AND deleted_at IS NULL");
+        $countStmt->execute([$client['clientname']]);
+        $recordCount = (int)$countStmt->fetchColumn();
+        if ($recordCount > 0) {
+            jsonOut([
+                'success'      => false,
+                'has_records'  => true,
+                'record_count' => $recordCount,
+                'error'        => "This client has $recordCount record(s) and can't be deleted. Remove or reassign their records first.",
+            ], 409);
         }
 
         // Soft delete: kept in Archives for 30 days, then purged by the
         // scheduled cleanup (see api/archive.php), instead of being
         // removed immediately and unrecoverably.
         $pdo->prepare("UPDATE clients SET deleted_at = ? WHERE id = ?")->execute([date('Y-m-d H:i:s'), $id]);
-        logAction($pdo, "Client deleted: " . $client['clientname'] . " (id=$id)" . ($force ? ' [forced, had records]' : ''));
+        logAction($pdo, "Client deleted: " . $client['clientname'] . " (id=$id)");
         jsonOut(['success' => true]);
     }
 

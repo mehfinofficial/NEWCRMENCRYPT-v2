@@ -13,6 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { jsonOut([]); }
 $pdo = getDB();
 requireAuth($pdo);
 ensureUserPermissionColumns($pdo);
+ensureUserAccessColumns($pdo);
 
 if (getUserRole($pdo) !== 'admin') {
     jsonOut(['error' => 'Admin access required'], 403);
@@ -22,15 +23,19 @@ $method = $_SERVER['REQUEST_METHOD'];
 
 // ── LIST USERS (for the Set User screen) ────────────────────────────────
 if ($method === 'GET') {
-    $rows = $pdo->query("SELECT uid, username, role, permissions, last_active FROM users ORDER BY username ASC")->fetchAll();
+    $rows = $pdo->query("SELECT uid, username, role, permissions, last_active, active, login_hours_enabled, login_start, login_end FROM users ORDER BY username ASC")->fetchAll();
     $users = array_map(function ($row) {
         $stored = json_decode($row['permissions'] ?? '', true) ?: [];
         return [
-            'uid'         => (int)$row['uid'],
-            'username'    => $row['username'],
-            'role'        => $row['role'] ?: 'viewer',
-            'permissions' => array_merge(array_fill_keys(ALL_PERMISSION_KEYS, true), $stored),
-            'last_active' => $row['last_active'],
+            'uid'                 => (int)$row['uid'],
+            'username'            => $row['username'],
+            'role'                => $row['role'] ?: 'viewer',
+            'permissions'         => array_merge(array_fill_keys(ALL_PERMISSION_KEYS, true), $stored),
+            'last_active'         => $row['last_active'],
+            'active'              => $row['active'] === null ? true : (bool)$row['active'],
+            'login_hours_enabled' => (bool)$row['login_hours_enabled'],
+            'login_start'         => $row['login_start'] ?: '09:00',
+            'login_end'           => $row['login_end']   ?: '19:00',
         ];
     }, $rows);
     jsonOut(['users' => $users, 'permission_keys' => ALL_PERMISSION_KEYS]);
@@ -64,9 +69,12 @@ if ($method === 'POST') {
 
         $hash        = password_hash($password, PASSWORD_DEFAULT);
         $permissions = json_encode(getRolePermissionDefaults($role));
+        // Every new account starts enabled, with the 9am-7pm login window
+        // on by default for everyone except admins (who are always exempt).
+        $loginHoursEnabled = $role === 'admin' ? 0 : 1;
 
-        $stmt = $pdo->prepare("INSERT INTO users (username, password, role, permissions) VALUES (?, ?, ?, ?)");
-        $stmt->execute([$username, $hash, $role, $permissions]);
+        $stmt = $pdo->prepare("INSERT INTO users (username, password, role, permissions, active, login_hours_enabled, login_start, login_end) VALUES (?, ?, ?, ?, 1, ?, '09:00', '19:00')");
+        $stmt->execute([$username, $hash, $role, $permissions, $loginHoursEnabled]);
 
         logAction($pdo, "Staff account created: {$username} ({$role})");
         jsonOut(['success' => true, 'uid' => (int)$pdo->lastInsertId()]);
@@ -80,10 +88,62 @@ if ($method === 'POST') {
             jsonOut(['success' => false, 'error' => 'Invalid uid or role.'], 400);
         }
         $permissions = json_encode(getRolePermissionDefaults($role));
-        $pdo->prepare("UPDATE users SET role = ?, permissions = ? WHERE uid = ?")
-            ->execute([$role, $permissions, $uid]);
+        // Role also drives the login-hours default: admins are exempt,
+        // everyone else's window toggle turns back on. Start/end times
+        // themselves are left as whatever was previously configured.
+        $loginHoursEnabled = $role === 'admin' ? 0 : 1;
+        $pdo->prepare("UPDATE users SET role = ?, permissions = ?, login_hours_enabled = ? WHERE uid = ?")
+            ->execute([$role, $permissions, $loginHoursEnabled, $uid]);
 
         logAction($pdo, "Permissions reset to {$role} default for user #{$uid}");
+        jsonOut(['success' => true]);
+    }
+
+    // ── ENABLE / DISABLE A USER ──────────────────────────────────────
+    if ($action === 'set_active') {
+        $uid    = (int)($body['uid'] ?? 0);
+        $active = !empty($body['active']);
+        if (!$uid) jsonOut(['success' => false, 'error' => 'Invalid uid.'], 400);
+
+        $stmt = $pdo->prepare("SELECT username FROM users WHERE uid = ? LIMIT 1");
+        $stmt->execute([$uid]);
+        $target = $stmt->fetch();
+        if (!$target) jsonOut(['success' => false, 'error' => 'User not found.'], 404);
+
+        // An admin can't lock themselves out by disabling their own account.
+        if ($uid === (int)($_SESSION['userid'] ?? 0) && !$active) {
+            jsonOut(['success' => false, 'error' => "You can't disable your own account."], 400);
+        }
+
+        $pdo->prepare("UPDATE users SET active = ? WHERE uid = ?")->execute([$active ? 1 : 0, $uid]);
+        logAction($pdo, ($active ? 'Enabled' : 'Disabled') . " account: {$target['username']} (#{$uid})");
+        jsonOut(['success' => true]);
+    }
+
+    // ── SET LOGIN-HOURS WINDOW (9am-7pm style restriction) ──────────────
+    if ($action === 'set_login_hours') {
+        $uid     = (int)($body['uid'] ?? 0);
+        $enabled = !empty($body['enabled']);
+        $start   = trim($body['start'] ?? '09:00');
+        $end     = trim($body['end']   ?? '19:00');
+
+        if (!$uid) jsonOut(['success' => false, 'error' => 'Invalid uid.'], 400);
+        if (!preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $start) || !preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $end)) {
+            jsonOut(['success' => false, 'error' => 'Times must be in HH:MM 24-hour format.'], 400);
+        }
+        if ($start >= $end) {
+            jsonOut(['success' => false, 'error' => 'Start time must be before end time.'], 400);
+        }
+
+        $stmt = $pdo->prepare("SELECT username, role FROM users WHERE uid = ? LIMIT 1");
+        $stmt->execute([$uid]);
+        $target = $stmt->fetch();
+        if (!$target) jsonOut(['success' => false, 'error' => 'User not found.'], 404);
+
+        $pdo->prepare("UPDATE users SET login_hours_enabled = ?, login_start = ?, login_end = ? WHERE uid = ?")
+            ->execute([$enabled ? 1 : 0, $start, $end, $uid]);
+
+        logAction($pdo, "Login hours " . ($enabled ? "set to {$start}-{$end}" : 'disabled') . " for {$target['username']} (#{$uid})");
         jsonOut(['success' => true]);
     }
 

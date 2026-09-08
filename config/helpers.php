@@ -48,6 +48,11 @@ function requireAuth(PDO $pdo): void {
         jsonOut(['error' => 'Unauthorized', 'redirect' => 'login.html'], 401);
     }
 
+    // Re-checked on every request (not just at login) — see
+    // enforceAccountAccess() for why. Exits via jsonOut() and never
+    // returns if the account is disabled or outside its login window.
+    enforceAccountAccess($pdo);
+
     touchLastActive($pdo);
 }
 
@@ -209,6 +214,89 @@ function ensureUserPermissionColumns(PDO $pdo): void {
     } catch (Exception $e) {}
 }
 
+// Auto-migrate: add account-access columns (Enable/Disable + login-hours
+// window) to `users`, and backfill existing rows the same moment the
+// columns are created — everyone active, and the 9am-7pm window turned on
+// for every existing account except admins, matching the defaults new
+// accounts get. Only runs the backfill inside the "column doesn't exist
+// yet" branch so it's a one-time migration, not something that stomps an
+// admin's later manual change to login_hours_enabled on every request.
+function ensureUserAccessColumns(PDO $pdo): void {
+    try {
+        $cols = array_column($pdo->query("PRAGMA table_info(users)")->fetchAll(), 'name');
+        if (!in_array('active', $cols)) {
+            $pdo->exec("ALTER TABLE users ADD COLUMN active INTEGER DEFAULT 1");
+        }
+        if (!in_array('login_hours_enabled', $cols)) {
+            $pdo->exec("ALTER TABLE users ADD COLUMN login_hours_enabled INTEGER DEFAULT 1");
+            // One-time backfill: admins are exempt by default, everyone else
+            // (including pre-existing accounts) starts with the window on.
+            $pdo->exec("UPDATE users SET login_hours_enabled = CASE WHEN role = 'admin' THEN 0 ELSE 1 END");
+        }
+        if (!in_array('login_start', $cols)) {
+            $pdo->exec("ALTER TABLE users ADD COLUMN login_start TEXT DEFAULT '09:00'");
+        }
+        if (!in_array('login_end', $cols)) {
+            $pdo->exec("ALTER TABLE users ADD COLUMN login_end TEXT DEFAULT '19:00'");
+        }
+    } catch (Exception $e) {}
+}
+
+// "09:00" -> "9:00 AM" for user-facing messages.
+function formatTime12(string $hhmm): string {
+    $parts = explode(':', $hhmm);
+    $h = (int)($parts[0] ?? 9);
+    $m = $parts[1] ?? '00';
+    $suffix = $h >= 12 ? 'PM' : 'AM';
+    $h12 = $h % 12; if ($h12 === 0) $h12 = 12;
+    return "{$h12}:{$m} {$suffix}";
+}
+
+// Same-day "HH:MM" window check against the current server time (Asia/Kolkata,
+// set at the top of this file). Doesn't support overnight windows (e.g.
+// 22:00-06:00) — not needed for a 9am-7pm business-hours restriction.
+function isWithinLoginWindow(string $start, string $end): bool {
+    $now = date('H:i');
+    return $now >= $start && $now <= $end;
+}
+
+// Checks the logged-in user's account is still enabled and, unless they're
+// an admin, still inside their allowed login-hours window. Called from
+// requireAuth() so this is re-checked on every authenticated request (not
+// just at login) — an admin disabling a user, or the clock passing their
+// window's end time, takes effect on that user's very next request instead
+// of waiting for their session to expire naturally. On violation, the
+// session is torn down immediately so the frontend can't keep acting on a
+// UI that looks logged in but isn't allowed to be anymore.
+function enforceAccountAccess(PDO $pdo): void {
+    $uid = (int)($_SESSION['userid'] ?? 0);
+    if (!$uid) return;
+
+    ensureUserAccessColumns($pdo);
+    $stmt = $pdo->prepare("SELECT role, active, login_hours_enabled, login_start, login_end FROM users WHERE uid = ? LIMIT 1");
+    $stmt->execute([$uid]);
+    $row = $stmt->fetch();
+    if (!$row) return;
+
+    $reason = null;
+    if ((int)$row['active'] === 0) {
+        $reason = 'Your account has been disabled. Contact your admin.';
+    } elseif ($row['role'] !== 'admin' && !empty($row['login_hours_enabled'])) {
+        $start = $row['login_start'] ?: '09:00';
+        $end   = $row['login_end']   ?: '19:00';
+        if (!isWithinLoginWindow($start, $end)) {
+            $reason = 'Access is only available between ' . formatTime12($start) . ' and ' . formatTime12($end) . '.';
+        }
+    }
+
+    if ($reason !== null) {
+        session_unset();
+        session_destroy();
+        setcookie('crm_remember', '', time() - 3600, '/', '', false, true);
+        jsonOut(['error' => $reason, 'redirect' => 'login.html', 'account_blocked' => true], 401);
+    }
+}
+
 // Stamps last_active for the given (or current) user. Throttled to once
 // every 5 minutes per user rather than every single request — "last
 // active" only needs to be accurate to a few minutes for spotting stale
@@ -266,6 +354,32 @@ function requirePermission(PDO $pdo, string $key): void {
 // response, so the masking has to happen here, not just in app.js.
 function maskPhone($value, bool $allowed) {
     return $allowed ? $value : null;
+}
+
+// ── MULTI-PHONE (extra contact numbers beyond the primary `contact` field) ──
+// Extra numbers live in their own table rather than a fixed set of columns,
+// so a client can have as many as needed. Same encryption-at-rest as the
+// primary contact/whatsapp fields.
+function ensureClientPhonesTable(PDO $pdo): void {
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS client_phones (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            client_id  INTEGER NOT NULL,
+            phone      TEXT NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )");
+    } catch (Exception $e) {}
+}
+
+// Permanently removes every extra phone number belonging to a client.
+// Called when a client is purged for good (manual admin purge or the
+// automatic 30-day sweep) so no orphaned rows are left behind — mirrors
+// purgeRecordFiles()'s role for a purged record's attached files.
+function purgeClientPhones(PDO $pdo, int $clientId): void {
+    if (!$clientId) return;
+    ensureClientPhonesTable($pdo);
+    $pdo->prepare("DELETE FROM client_phones WHERE client_id = ?")->execute([$clientId]);
 }
 
 // ── FILE CASCADE (files ride along with the record they're attached to) ──
@@ -359,6 +473,13 @@ function purgeExpiredArchives(PDO $pdo): void {
                 $ids->execute([$cutoff]);
                 foreach ($ids->fetchAll(PDO::FETCH_COLUMN) as $expiredId) {
                     purgeRecordFiles($pdo, (int)$expiredId);
+                }
+            }
+            if ($type === 'clients') {
+                $ids = $pdo->prepare("SELECT id FROM $table WHERE deleted_at IS NOT NULL AND deleted_at < ?");
+                $ids->execute([$cutoff]);
+                foreach ($ids->fetchAll(PDO::FETCH_COLUMN) as $expiredId) {
+                    purgeClientPhones($pdo, (int)$expiredId);
                 }
             }
 

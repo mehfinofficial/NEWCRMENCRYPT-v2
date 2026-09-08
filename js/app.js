@@ -32,7 +32,21 @@ async function _pollTick() {
     _lastSyncTs = res.server_ts;
     _silentRefresh();
     _refreshPermissions();
-  } catch(e) { /* swallow — don't show errors for background polls */ }
+  } catch(e) {
+    // sync.php runs requireAuth() same as everything else, so if the
+    // account was just disabled or its login-hours window just closed,
+    // THIS poll can be the very request that trips enforceAccountAccess()
+    // and tears down the session server-side — that comes back as a 401.
+    // That's the one case this catch must not swallow: without this, the
+    // session dies on the server but the SPA never notices, so the
+    // "kicked within ~5s" behavior silently never reached the user.
+    // Everything else (network blips, etc.) is still swallowed as before.
+    if (e.status === 401) {
+      showToast((e.body && e.body.error) || 'Your session has ended. Please log in again.');
+      setTimeout(() => window.location.reload(), 1500);
+      return;
+    }
+  }
 }
 
 // Re-checks this session's own role/permissions against the server and
@@ -132,23 +146,12 @@ document.addEventListener('focusout', e => { if (e.target.matches('input,textare
 
 /* ---- NAVIGATION ---- */
 function navigate(page) {
-  // View-only screen gates — checked before any DOM/state changes so a
-  // denied navigation leaves the current screen exactly as it was instead
-  // of flashing the target page before bouncing back.
-  if (page === 'clients' && !can('view_clients')) { showPermissionDenied(); return; }
+  // Logs is a hard admin-only gate (unrelated to the toggleable view_*
+  // permissions), so it still blocks navigation outright. Clients/Queries
+  // are NOT blocked here anymore — the page always opens, and
+  // loadClients()/loadRecords()/loadFollowups() render a Permission Denied
+  // placeholder in the list area instead if the user isn't allowed to view it.
   if (page === 'logs' && !isAdmin()) { showPermissionDenied(); return; }
-  if (page === 'queries') {
-    // The merged Queries page has two independently-gated sub-views. If
-    // the one currently selected isn't allowed, fall back to the other
-    // one rather than denying outright — only block if neither is.
-    if (queriesView === 'records' && !can('view_records') && can('view_followups')) {
-      queriesView = 'followups';
-    } else if (queriesView === 'followups' && !can('view_followups') && can('view_records')) {
-      queriesView = 'records';
-    }
-    const allowed = queriesView === 'followups' ? can('view_followups') : can('view_records');
-    if (!allowed) { showPermissionDenied(); return; }
-  }
 
   closeFabSheet();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -232,10 +235,10 @@ function resetFollowupFilter() {
 // Also the entry point used by dashboard shortcuts (navigateQueries).
 function setQueriesView(view) {
   const target = view === 'followups' ? 'followups' : 'records';
-  // Guards the in-page toggle buttons directly, since they call this
-  // without going through navigate()'s own gate.
-  const allowed = target === 'followups' ? can('view_followups') : can('view_records');
-  if (!allowed) { showPermissionDenied(); return; }
+  // No permission gate here anymore — the toggle always switches sub-view,
+  // same as navigate()'s Clients gate above. loadRecords()/loadFollowups()
+  // render the in-page Permission Denied placeholder themselves if the
+  // user isn't allowed to view that sub-view.
 
   const prevView = queriesView;
   queriesView = target;
@@ -463,14 +466,28 @@ function applyPermissionUI() {
 
   document.querySelectorAll('.admin-fab').forEach(el => el.classList.toggle('perm-hidden', !isAdmin()));
 
-  // View-only screen gates — hide the nav entry points a restricted user
-  // can't open anyway, so nothing dangles as a dead end that just bounces
-  // them into a Permission Denied modal.
-  document.querySelector('.nav-item[data-page="clients"]')?.classList.toggle('perm-hidden', !can('view_clients'));
-  document.querySelector('.nav-item[data-page="queries"]')?.classList.toggle('perm-hidden', !can('view_records') && !can('view_followups'));
-  document.querySelector('#queriesToggle .queries-toggle__btn[data-view="records"]')?.classList.toggle('perm-hidden', !can('view_records'));
-  document.querySelector('#queriesToggle .queries-toggle__btn[data-view="followups"]')?.classList.toggle('perm-hidden', !can('view_followups'));
   document.getElementById('viewLogsRow')?.classList.toggle('perm-hidden', !isAdmin());
+}
+
+// Renders a "Permission denied" placeholder (icon + text) inside a
+// screen's list area, in place of its cards/data. Used instead of hiding
+// the nav entry point entirely — the Clients/Records/Follow-ups tabs and
+// the Queries sub-toggle always stay visible and tappable; if the user
+// isn't allowed to view that screen, they land on it and see this instead
+// of a dead end or a bounce back to Dashboard.
+function renderPermissionDeniedState(elementId, screenLabel) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  el.innerHTML = `
+    <div class="permission-denied-inline">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"/>
+        <line x1="7" y1="7" x2="17" y2="17"/>
+      </svg>
+      <div class="pd-title">Permission Denied</div>
+      <div class="pd-sub">You don't have access to view ${esc(screenLabel)}. Contact your admin if you need this.</div>
+    </div>
+  `;
 }
 
 /* ---- PERMISSION DENIED / CONFIRM MODALS (generic, reused everywhere) ---- */
@@ -640,10 +657,40 @@ function resetClientForm() {
   document.getElementById('c_system_id').value = '';
   document.getElementById('c_software_type').value = '';
   document.getElementById('c_status').value = '1';
+  clearExtraPhoneFields();
 
   editingClientId = null;
   document.getElementById('addClientModalTitle').textContent = 'New Client';
   document.getElementById('addClientSaveBtn').textContent = 'Save Client';
+}
+
+/* ---- MULTI-PHONE: extra Contact number slots on the client form ---- */
+// Each row is just an input + a remove button; values are collected fresh
+// from the DOM on save, so there's no separate array to keep in sync.
+function addExtraPhoneField(value = '') {
+  const container = document.getElementById('c_extra_phones');
+  const row = document.createElement('div');
+  row.className = 'extra-phone-row';
+  row.innerHTML = `
+    <input type="tel" class="c_extra_contact" placeholder="+91 XXXXX XXXXX" value="${esc(value)}" />
+    <button type="button" class="btn-remove-phone" onclick="this.closest('.extra-phone-row').remove()" title="Remove this number">&minus;</button>
+  `;
+  container.appendChild(row);
+}
+
+function clearExtraPhoneFields() {
+  document.getElementById('c_extra_phones').innerHTML = '';
+}
+
+function populateExtraPhoneFields(numbers) {
+  clearExtraPhoneFields();
+  (numbers || []).forEach(n => addExtraPhoneField(n));
+}
+
+function getExtraPhoneValues() {
+  return Array.from(document.querySelectorAll('#c_extra_phones .c_extra_contact'))
+    .map(el => el.value.trim())
+    .filter(Boolean);
 }
 
 // Close modals on backdrop click
@@ -844,7 +891,11 @@ async function loadClients(search = '') {
     renderClients(allClients);
   } catch(e) {
     console.error(e);
-    document.getElementById('clientsList').innerHTML = `<div class="empty-state">Failed to load clients</div>`;
+    if (e.status === 403 && e.body?.permission_denied) {
+      renderPermissionDeniedState('clientsList', 'Clients');
+    } else {
+      document.getElementById('clientsList').innerHTML = `<div class="empty-state">Failed to load clients</div>`;
+    }
   }
 }
 
@@ -933,6 +984,7 @@ function openClientDetail(c) {
       ${detailRow('Address', c.address)}
       ${detailRow('Person', c.clientname)}
       ${detailRow('Phone', c.contact)}
+      ${(c.extra_contacts || []).map((n, i) => detailRow(`Phone ${i + 2}`, n)).join('')}
       ${detailRow('Email', c.email)}
       ${detailRow('Renewal', formatDate(c.renewal_date))}
       ${c.software_type ? `
@@ -1080,6 +1132,7 @@ function openEditClientFromDetail() {
   document.getElementById('c_contact').value             = c.contact || '';
   document.getElementById('c_email').value               = c.email || '';
   document.getElementById('c_whatsapp').value            = c.whatsapp || '+91';
+  populateExtraPhoneFields(c.extra_contacts || []);
   document.getElementById('c_renewal_date').value        = c.renewal_date || '';
   document.getElementById('c_system_id').value           = c.system_id || '';
   document.getElementById('c_software_version').value    = c.software_version || '';
@@ -1109,25 +1162,10 @@ function confirmDeleteClient() {
         loadClients();
       } catch (e) {
         if (e.status === 403) { showPermissionDenied(); return; }
-        // Fail-safe: this client has existing records attached. Ask for
-        // an explicit second confirmation before forcing it through,
-        // instead of silently orphaning those records.
+        // Hard block: a client with existing records can never be deleted.
+        // No retry/force option — just tell the user why and stop.
         if (e.status === 409 && e.body && e.body.has_records) {
-          showConfirm(
-            'This client has records',
-            `${e.body.record_count} record(s) are attached to ${c.firmname || c.clientname}. Delete the client anyway? Its records will remain but the client will be archived.`,
-            async () => {
-              try {
-                await API.deleteClient(c.id, true);
-                showToast('Client deleted');
-                closeModal('clientDetailModal');
-                loadClients();
-              } catch (e2) {
-                if (e2.status === 403) showPermissionDenied();
-                else showToast('Failed to delete client');
-              }
-            }
-          );
+          showToast(e.body.error || `This client has ${e.body.record_count} record(s) and can't be deleted.`);
           return;
         }
         showToast('Failed to delete client');
@@ -1142,6 +1180,7 @@ async function saveClient() {
     firmname:         document.getElementById('c_firm').value.trim(),
     address:          document.getElementById('c_address').value.trim(),
     contact:          document.getElementById('c_contact').value.trim(),
+    extra_contacts:   getExtraPhoneValues(),
     email:            document.getElementById('c_email').value.trim(),
     whatsapp:         document.getElementById('c_whatsapp').value.trim(),
     system_id:        document.getElementById('c_system_id').value.trim() || null,
@@ -1196,7 +1235,11 @@ async function loadRecords(search = '') {
     recordsPaging = { page: 1, hasMore: !!data.hasMore, search, filter: recordFilter, date: recordDateFilter };
     renderRecords(allRecords);
   } catch(e) {
-    document.getElementById('recordsList').innerHTML = `<div class="empty-state">Failed to load records</div>`;
+    if (e.status === 403 && e.body?.permission_denied) {
+      renderPermissionDeniedState('recordsList', 'Records');
+    } else {
+      document.getElementById('recordsList').innerHTML = `<div class="empty-state">Failed to load records</div>`;
+    }
   }
 }
 
@@ -1583,7 +1626,11 @@ async function loadFollowups(search = '') {
     followupsPaging = { page: 1, hasMore: !!data.hasMore, search, filter: followupFilter };
     renderFollowups(allFollowups);
   } catch(e) {
-    document.getElementById('followupsList').innerHTML = `<div class="empty-state">Failed to load follow-ups</div>`;
+    if (e.status === 403 && e.body?.permission_denied) {
+      renderPermissionDeniedState('followupsList', 'Follow-ups');
+    } else {
+      document.getElementById('followupsList').innerHTML = `<div class="empty-state">Failed to load follow-ups</div>`;
+    }
   }
 }
 
@@ -2272,6 +2319,36 @@ function selectQmClientSuggestion(clientname) {
   document.getElementById('qm_account').value = clientname;
   document.getElementById('qm_account_search').value = client ? (client.firmname || client.clientname) : clientname;
   document.getElementById('qm_account_suggestions').style.display = 'none';
+  populateQmNumberDropdown(client);
+}
+
+// Every phone number on file for a client, in the order shown in the
+// "Send To" dropdown. WhatsApp first since that's what quick-message
+// channel defaults to sending on.
+function getClientPhoneOptions(client) {
+  if (!client) return [];
+  const options = [];
+  if (client.whatsapp) options.push({ label: `WhatsApp — ${client.whatsapp}`, value: client.whatsapp });
+  if (client.contact)  options.push({ label: `Contact — ${client.contact}`, value: client.contact });
+  (client.extra_contacts || []).forEach((n, i) => {
+    if (n) options.push({ label: `Contact ${i + 2} — ${n}`, value: n });
+  });
+  return options;
+}
+
+// Only shown when a client has more than one number on file — a
+// single-number client skips this entirely, same as before this feature.
+function populateQmNumberDropdown(client) {
+  const group  = document.getElementById('qm_number_group');
+  const select = document.getElementById('qm_number');
+  const options = getClientPhoneOptions(client);
+  if (options.length > 1) {
+    select.innerHTML = options.map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('');
+    group.style.display = 'flex';
+  } else {
+    select.innerHTML = '';
+    group.style.display = 'none';
+  }
 }
 
 document.addEventListener('click', (e) => {
@@ -2314,7 +2391,10 @@ function previewQuickMessage() {
 
   document.getElementById('qm_preview_text').value = fillMessageTemplate(template.body, client);
 
-  const phone = (client.whatsapp || client.contact || '').replace(/\D/g, '');
+  const options = getClientPhoneOptions(client);
+  const phone = options.length > 1
+    ? (document.getElementById('qm_number').value || '').replace(/\D/g, '')
+    : (options[0]?.value || '').replace(/\D/g, '');
   const warn = document.getElementById('qm_no_phone_warning');
   if (!phone) {
     warn.textContent = 'No phone number on file for this client — you can still copy the message manually.';
@@ -2349,7 +2429,10 @@ function sendQuickMessage(channel) {
   const text  = document.getElementById('qm_preview_text').value.trim();
   if (!text) { showToast('Message is empty'); return; }
 
-  const rawPhone = _qmSelectedClient.whatsapp || _qmSelectedClient.contact || '';
+  const options  = getClientPhoneOptions(_qmSelectedClient);
+  const rawPhone = options.length > 1
+    ? (document.getElementById('qm_number').value || '')
+    : (options[0]?.value || '');
   const phone    = normalizePhoneForSend(rawPhone);
   if (!phone) { showToast('No phone number on file for this client'); return; }
 
@@ -2379,6 +2462,8 @@ function resetQuickMessageForm() {
   document.getElementById('qm_template').value = '';
   document.getElementById('qm_preview_text').value = '';
   document.getElementById('qm_no_phone_warning').style.display = 'none';
+  document.getElementById('qm_number_group').style.display = 'none';
+  document.getElementById('qm_number').innerHTML = '';
   _qmSelectedClient = null;
   _qmSelectedTemplate = null;
   backToComposeQuickMessage();
@@ -2477,6 +2562,7 @@ function openRenewalDetail(id) {
         <span class="cd-sysid-pill">${esc(c.system_id)}</span>
       </div>` : ''}
       ${detailRow('Phone', c.contact)}
+      ${(c.extra_contacts || []).map((n, i) => detailRow(`Phone ${i + 2}`, n)).join('')}
       ${c.software_type ? `
       <div class="detail-row">
         <span class="detail-label">Software</span>
@@ -2644,6 +2730,7 @@ async function sendRenewalReminderFromDetail() {
 
   document.getElementById('qm_account').value = c.clientname;
   document.getElementById('qm_account_search').value = c.firmname || c.clientname;
+  populateQmNumberDropdown(c);
 
   const tmpl = _qmTemplates.find(t => t.name === 'Renewal Reminder');
   if (tmpl) document.getElementById('qm_template').value = tmpl.id;
@@ -3213,6 +3300,7 @@ async function sendRecordMessageFromDetail(clientname) {
 
   document.getElementById('qm_account').value = clientname;
   document.getElementById('qm_account_search').value = c ? (c.firmname || c.clientname) : clientname;
+  populateQmNumberDropdown(c);
 }
 
 function openRecordDetailById(id)   { const r = allRecords.find(x => x.id === id);   if (r) openRecordDetail(r); }
@@ -3651,6 +3739,14 @@ function roleLabel(role) {
 let _setUserUsers    = [];
 let _editingUserUid  = null;
 let _editingUserPerms = {};
+// Enable/Disable + login-hours are now held as local pending state, same
+// as _editingUserPerms above, instead of writing to the server the moment
+// a toggle is clicked. _editingUserAccessOriginal is the last-saved
+// snapshot (what's actually live on the server) so saveUserPermissions()
+// can diff against it and only send the calls for whatever actually
+// changed, rather than re-writing everything on every save.
+let _editingUserAccess = {};
+let _editingUserAccessOriginal = {};
 
 async function loadSetUserList() {
   const el = document.getElementById('setUserList');
@@ -3706,6 +3802,14 @@ function openUserPermissionsEditor(uid) {
   if (!user) return;
   _editingUserUid   = uid;
   _editingUserPerms = { ...user.permissions };
+  _editingUserAccess = {
+    role:                user.role,
+    active:              !!user.active,
+    login_hours_enabled: !!user.login_hours_enabled,
+    login_start:         user.login_start || '09:00',
+    login_end:           user.login_end   || '19:00',
+  };
+  _editingUserAccessOriginal = { ..._editingUserAccess };
 
   document.getElementById('upTitle').textContent      = user.username;
   document.getElementById('upRoleLabel').textContent   = roleLabel(user.role);
@@ -3713,8 +3817,55 @@ function openUserPermissionsEditor(uid) {
     c.classList.toggle('active', c.dataset.role === user.role);
   });
 
+  renderUserAccessControls();
   renderUserPermissionsBody();
   openModal('userPermissionsModal');
+}
+
+// Enable/Disable + login-hours toggles. These used to persist the instant
+// they were clicked, decoupled from the "Save Permissions" button below —
+// which turned out to be more surprising than helpful (a toggle here would
+// silently take effect even if the admin then closed the modal without
+// saving). They now behave exactly like the permission toggles: local
+// pending state, rendered from _editingUserAccess, committed only when
+// Save Permissions is clicked.
+function renderUserAccessControls() {
+  const state = _editingUserAccess;
+  document.getElementById('upActiveToggle').classList.toggle('on', !!state.active);
+
+  const isAdmin = state.role === 'admin';
+  const hoursToggle = document.getElementById('upLoginHoursToggle');
+  const hoursTimes  = document.getElementById('upLoginHoursTimes');
+  const hoursSub    = document.getElementById('upLoginHoursSub');
+
+  hoursToggle.classList.toggle('on', !!state.login_hours_enabled);
+  hoursToggle.classList.toggle('perm-hidden', isAdmin);
+  document.getElementById('upLoginStart').value = state.login_start || '09:00';
+  document.getElementById('upLoginEnd').value   = state.login_end   || '19:00';
+  hoursTimes.style.display = state.login_hours_enabled ? 'flex' : 'none';
+  hoursSub.textContent = isAdmin
+    ? 'Admins are always exempt from login-hours restrictions.'
+    : 'Only allow login between these hours.';
+}
+
+function toggleUserActiveInEditor() {
+  if (!_editingUserUid) return;
+  _editingUserAccess.active = !_editingUserAccess.active;
+  renderUserAccessControls();
+}
+
+function toggleLoginHoursInEditor() {
+  if (!_editingUserUid) return;
+  if (_editingUserAccess.role === 'admin') return; // admins are hard-exempt, toggle is hidden for them
+  _editingUserAccess.login_hours_enabled = !_editingUserAccess.login_hours_enabled;
+  renderUserAccessControls();
+}
+
+// Just updates the pending local values — no API call. Renamed from
+// saveLoginHoursFromEditor() since it no longer saves anything itself.
+function onUserLoginTimeChange() {
+  _editingUserAccess.login_start = document.getElementById('upLoginStart').value || '09:00';
+  _editingUserAccess.login_end   = document.getElementById('upLoginEnd').value   || '19:00';
 }
 
 function renderUserPermissionsBody() {
@@ -3764,12 +3915,36 @@ async function saveUserPermissions() {
   const btn = document.getElementById('upSaveBtn');
   btn.disabled = true;
   try {
+    // Account-access changes (Enable/Disable, Login Hours) are now pending
+    // local state just like the permission toggles below — commit whatever
+    // actually changed here, alongside them, so nothing in this screen
+    // applies until this button is clicked.
+    const orig = _editingUserAccessOriginal;
+    const next = _editingUserAccess;
+
+    if (next.active !== orig.active) {
+      await API.setUserActive({ uid: _editingUserUid, active: next.active });
+    }
+    if (next.login_hours_enabled !== orig.login_hours_enabled
+        || next.login_start !== orig.login_start
+        || next.login_end   !== orig.login_end) {
+      await API.setUserLoginHours({
+        uid:     _editingUserUid,
+        enabled: next.login_hours_enabled,
+        start:   next.login_start,
+        end:     next.login_end,
+      });
+    }
+
     await API.setUserPermissions({ uid: _editingUserUid, permissions: _editingUserPerms });
     showToast('Permissions saved');
     closeModal('userPermissionsModal');
     loadSetUserList();
   } catch (e) {
-    showToast('Failed to save permissions');
+    // Surface the backend's actual reason (e.g. "You can't disable your
+    // own account.") instead of a generic message, since that guard can
+    // now only be discovered here rather than at the moment of toggling.
+    showToast((e.body && e.body.error) || 'Failed to save permissions');
   } finally {
     btn.disabled = false;
   }

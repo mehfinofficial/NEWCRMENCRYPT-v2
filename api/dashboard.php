@@ -6,29 +6,32 @@ require_once __DIR__ . '/../config/helpers.php';
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { jsonOut([]); }
 
 // ── Auth check ────────────────────────────────────────────
+// Was previously a hand-rolled duplicate of requireAuth()'s session/
+// remember-me check that stopped short of calling enforceAccountAccess() —
+// meaning a disabled account, or one whose login-hours window had closed,
+// could sit on the Dashboard tab (the default landing page) indefinitely
+// without ever being kicked, even though every other screen would catch it.
+// requireAuth() does the same session + remember-me check plus that
+// enforcement, so this now behaves identically to the rest of the API.
 $pdo = getDB();
-
-// Check session first
-if (empty($_SESSION['userid'])) {
-    // Try remember-me cookie
-    $token = $_COOKIE['crm_remember'] ?? '';
-    if ($token) {
-        $stmt = $pdo->prepare("SELECT uid, username FROM users WHERE remember_token = ? AND token_expires > ? LIMIT 1");
-        $stmt->execute([$token, date('Y-m-d H:i:s')]);
-        $user = $stmt->fetch();
-        if ($user) {
-            $_SESSION['userid']   = $user['uid'];
-            $_SESSION['username'] = $user['username'];
-        }
-    }
-}
-
-if (empty($_SESSION['userid'])) {
-    jsonOut(['error' => 'Unauthorized', 'redirect' => 'login.html'], 401);
-}
+requireAuth($pdo);
 
 $username = $_SESSION['username'];
 $userid   = (int)$_SESSION['userid'];
+
+// Every query below now excludes archived (soft-deleted) rows — see the
+// per-query comments — so this guards against a query failing with "no
+// such column" on a brand-new install where Dashboard happens to load
+// before Clients/Records/Followups have ever run their own migration.
+// Cheap no-op once the column already exists, same pattern used there.
+foreach (['clients' => 'clients', 'transactions' => 'transactions', 'followup' => 'followup'] as $table) {
+    try {
+        $cols = array_column($pdo->query("PRAGMA table_info($table)")->fetchAll(), 'name');
+        if (!in_array('deleted_at', $cols)) {
+            $pdo->exec("ALTER TABLE $table ADD COLUMN deleted_at DATETIME DEFAULT NULL");
+        }
+    } catch (Exception $e) {}
+}
 
 $today = today();
 
@@ -44,17 +47,17 @@ function trendPct(int $now, int $prev): ?int {
 }
 
 // Total clients + weekly trend
-$totalClients    = (int)$pdo->query("SELECT COUNT(*) FROM clients")->fetchColumn();
-$s = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE created_at >= ?");
+$totalClients    = (int)$pdo->query("SELECT COUNT(*) FROM clients WHERE deleted_at IS NULL")->fetchColumn();
+$s = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE deleted_at IS NULL AND created_at >= ?");
 $s->execute([$weekStart]); $clientsThisWeek = (int)$s->fetchColumn();
-$s = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE created_at BETWEEN ? AND ?");
+$s = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE deleted_at IS NULL AND created_at BETWEEN ? AND ?");
 $s->execute([$lastWeekStart, $lastWeekEnd . ' 23:59:59']); $clientsLastWeek = (int)$s->fetchColumn();
 
 // Total records + weekly trend
-$totalRecords    = (int)$pdo->query("SELECT COUNT(*) FROM transactions")->fetchColumn();
-$s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE transdate >= ?");
+$totalRecords    = (int)$pdo->query("SELECT COUNT(*) FROM transactions WHERE deleted_at IS NULL")->fetchColumn();
+$s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE deleted_at IS NULL AND transdate >= ?");
 $s->execute([$weekStart]); $recordsThisWeek = (int)$s->fetchColumn();
-$s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE transdate BETWEEN ? AND ?");
+$s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE deleted_at IS NULL AND transdate BETWEEN ? AND ?");
 $s->execute([$lastWeekStart, $lastWeekEnd]); $recordsLastWeek = (int)$s->fetchColumn();
 
 // Resolution rate: of the queries opened this week (excludes the
@@ -65,7 +68,8 @@ $s = $pdo->prepare("
         COUNT(*) AS opened,
         SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) AS resolved
     FROM transactions
-    WHERE transdate >= ?
+    WHERE deleted_at IS NULL
+      AND transdate >= ?
       AND (servicetype IS NULL OR servicetype != 'payment')
 ");
 $s->execute([$weekStart]);
@@ -75,16 +79,16 @@ $queriesResolved = (int)($resRow['resolved'] ?? 0);
 $resolutionRate  = $queriesOpened > 0 ? (int)round(($queriesResolved / $queriesOpened) * 100) : 0;
 
 // Expired
-$s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE renewaldate < ? AND renewaldate != '' AND renewaldate IS NOT NULL AND servicetype = 'renewal'");
+$s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE deleted_at IS NULL AND renewaldate < ? AND renewaldate != '' AND renewaldate IS NOT NULL AND servicetype = 'renewal'");
 $s->execute([$today]); $expired = (int)$s->fetchColumn();
-$s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE renewaldate < ? AND renewaldate != '' AND renewaldate IS NOT NULL AND servicetype = 'renewal'");
+$s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE deleted_at IS NULL AND renewaldate < ? AND renewaldate != '' AND renewaldate IS NOT NULL AND servicetype = 'renewal'");
 $s->execute([$lastWeekStart]); $expiredLastWeek = (int)$s->fetchColumn();
 
 // Expiring soon (within 15 days)
 $future = date('Y-m-d', strtotime('+15 days'));
-$s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE renewaldate BETWEEN ? AND ? AND renewaldate != '' AND renewaldate IS NOT NULL AND servicetype = 'renewal'");
+$s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE deleted_at IS NULL AND renewaldate BETWEEN ? AND ? AND renewaldate != '' AND renewaldate IS NOT NULL AND servicetype = 'renewal'");
 $s->execute([$today, $future]); $expiring = (int)$s->fetchColumn();
-$s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE renewaldate BETWEEN ? AND ? AND renewaldate != '' AND renewaldate IS NOT NULL AND servicetype = 'renewal'");
+$s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE deleted_at IS NULL AND renewaldate BETWEEN ? AND ? AND renewaldate != '' AND renewaldate IS NOT NULL AND servicetype = 'renewal'");
 $s->execute([$lastWeekStart, date('Y-m-d', strtotime($lastWeekEnd . ' +15 days'))]); $expiringLastWeek = (int)$s->fetchColumn();
 
 // Upcoming renewals (next 7 days) — pulled from clients.renewal_date, the
@@ -95,7 +99,8 @@ $weekAhead = date('Y-m-d', strtotime('+7 days'));
 $upcomingStmt = $pdo->prepare("
     SELECT id, clientname, firmname, renewal_date
     FROM clients
-    WHERE renewal_date IS NOT NULL AND renewal_date != ''
+    WHERE deleted_at IS NULL
+      AND renewal_date IS NOT NULL AND renewal_date != ''
       AND renewal_date BETWEEN ? AND ?
     ORDER BY renewal_date ASC
     LIMIT 10
@@ -107,7 +112,7 @@ $upcoming = $upcomingStmt->fetchAll();
 $followStmt = $pdo->prepare("
     SELECT id, phonenumber, clientname, type, reminderdate, status
     FROM followup
-    WHERE reminderdate = ? AND status = 'pending'
+    WHERE deleted_at IS NULL AND reminderdate = ? AND status = 'pending'
     LIMIT 10
 ");
 $followStmt->execute([$today]);
@@ -118,7 +123,7 @@ $chart = [];
 for ($i = 6; $i >= 0; $i--) {
     $date     = date('Y-m-d', strtotime("-$i days"));
     $dayLabel = date('D', strtotime($date));
-    $s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE transdate = ?");
+    $s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE deleted_at IS NULL AND transdate = ?");
     $s->execute([$date]);
     $chart[] = ['day' => $dayLabel, 'date' => $date, 'count' => (int)$s->fetchColumn()];
 }
@@ -127,13 +132,13 @@ for ($i = 6; $i >= 0; $i--) {
 $monthStart = date('Y-m-01');
 $monthEnd   = date('Y-m-t');
 
-$s = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE created_at >= ?");
+$s = $pdo->prepare("SELECT COUNT(*) FROM clients WHERE deleted_at IS NULL AND created_at >= ?");
 $s->execute([$monthStart]); $monthNewClients = (int)$s->fetchColumn();
 
-$s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE transdate BETWEEN ? AND ? AND servicetype = 'renewal'");
+$s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE deleted_at IS NULL AND transdate BETWEEN ? AND ? AND servicetype = 'renewal'");
 $s->execute([$monthStart, $monthEnd]); $monthRenewals = (int)$s->fetchColumn();
 
-$s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE renewaldate BETWEEN ? AND ? AND servicetype = 'renewal'");
+$s = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE deleted_at IS NULL AND renewaldate BETWEEN ? AND ? AND servicetype = 'renewal'");
 $s->execute([$monthStart, $monthEnd]); $monthDue = (int)$s->fetchColumn();
 
 jsonOut([
