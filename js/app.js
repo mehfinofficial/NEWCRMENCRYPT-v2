@@ -345,11 +345,9 @@ function fabAction(label) {
       openRenewalsList();
       return;
 
-    case 'Client Ledger':
-      // The ledger itself lives inside each client's detail modal (History
-      // section) — this shortcut just gets the user to the Clients list
-      // so they can pick a client and open it.
-      navigate('clients');
+    case 'Quick Links':
+      if (!can('access_quick_links')) { showPermissionDenied(); return; }
+      openQuickLinks();
       return;
 
     case 'System ID Checker':
@@ -1436,6 +1434,65 @@ function toggleRecordFileInput() {
   if (checked) initRecordFileDrop();
 }
 
+// Shows whatever files are already attached to the record currently being
+// edited — previously the edit form only ever offered a fresh upload
+// input, so a record's existing files looked like they'd disappeared the
+// moment you opened Edit. Each row has a Remove button (not a view/open
+// action) since this is the edit form, not the read-only detail view —
+// removing a file here calls files.php's delete action directly and
+// re-renders the list, it does not touch the record itself.
+async function loadExistingRecordFiles(recordId) {
+  const section = document.getElementById('r_existing_files_section');
+  const list    = document.getElementById('r_existing_files_list');
+  if (!section || !list) return;
+  section.style.display = 'none';
+  list.innerHTML = '';
+  if (!recordId) return;
+  try {
+    const data  = await API.getFilesForRecord(recordId);
+    const files = data.files || [];
+    if (!files.length) return;
+    section.style.display = 'flex';
+    list.innerHTML = files.map(f => `
+      <div class="rdm-file-row" style="cursor:default;">
+        <div class="rdm-file-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+        </div>
+        <div class="rdm-file-info">
+          <div class="rdm-file-name">${esc(f.original_name)}</div>
+          <div class="rdm-file-meta">${formatFileSize(f.filesize)}${f.created_at ? ' · ' + formatDate(f.created_at) : ''}</div>
+        </div>
+        <button type="button" class="icon-btn" aria-label="Remove file" onclick='removeExistingRecordFile(${JSON.stringify(f.id)}, ${JSON.stringify(f.original_name)}, ${JSON.stringify(recordId)})'>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/></svg>
+        </button>
+      </div>
+    `).join('');
+  } catch (e) {
+    section.style.display = 'none';
+  }
+}
+
+// Permanently removes a single file from the record being edited. Doesn't
+// require re-saving the record — the delete happens immediately, same as
+// how new files upload immediately-on-save rather than being staged.
+function removeExistingRecordFile(fileId, fileName, recordId) {
+  if (!can('can_edit_record')) { showPermissionDenied(); return; }
+  showConfirm(
+    'Remove file?',
+    `"${fileName}" will be permanently deleted.`,
+    async () => {
+      try {
+        await API.deleteFile(fileId);
+        showToast('File removed');
+        loadExistingRecordFiles(recordId);
+      } catch (e) {
+        if (e.status === 403) { showPermissionDenied(); return; }
+        showToast('Failed to remove file');
+      }
+    }
+  );
+}
+
 function _formatFileSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -1627,6 +1684,10 @@ document.getElementById('r_transdate').value = localDateStr();
   if (filesWrap) filesWrap.style.display = 'none';
   const filesList = document.getElementById('r_filelist');
   if (filesList) filesList.innerHTML = '';
+  const existingFilesSection = document.getElementById('r_existing_files_section');
+  if (existingFilesSection) existingFilesSection.style.display = 'none';
+  const existingFilesList = document.getElementById('r_existing_files_list');
+  if (existingFilesList) existingFilesList.innerHTML = '';
   // Hide all groups
   ['r_grp_support','r_grp_renewal','r_grp_syschange','r_grp_install','r_grp_files'].forEach(id => {
     const el = document.getElementById(id); if(el) el.style.display = 'none';
@@ -3330,6 +3391,142 @@ async function generateFileLinkFor(id) {
   }
 }
 
+/* ========================
+   QUICK LINKS — admin pastes links (tools used anywhere), everyone with
+   access_quick_links can view + copy them. Add/Edit/Delete are hard
+   admin-only, enforced server-side in quicklinks.php regardless of what
+   the client sends — same non-toggleable pattern as Add User / Set User.
+   ======================== */
+let _quickLinks = [];
+let _editingQuickLinkId = null;
+
+function openQuickLinks() {
+  const addBtn = document.getElementById('qlAddBtn');
+  if (addBtn) addBtn.classList.toggle('perm-hidden', !isAdmin());
+  openModal('quickLinksModal');
+  loadQuickLinks();
+}
+
+async function loadQuickLinks() {
+  const el = document.getElementById('quickLinksList');
+  el.innerHTML = `<div class="empty-state">Loading...</div>`;
+  try {
+    const data = await API.getQuickLinks();
+    _quickLinks = data.links || [];
+    renderQuickLinksList();
+  } catch (e) {
+    if (e.status === 403) { closeModal('quickLinksModal'); showPermissionDenied(); return; }
+    el.innerHTML = `<div class="empty-state">Failed to load quick links</div>`;
+  }
+}
+
+function renderQuickLinksList() {
+  const el = document.getElementById('quickLinksList');
+  if (!_quickLinks.length) { el.innerHTML = `<div class="empty-state">No quick links yet</div>`; return; }
+  const admin = isAdmin();
+  el.innerHTML = _quickLinks.map(l => `
+    <div class="list-item" style="cursor:default;align-items:flex-start;">
+      <div class="item-avatar" style="background:var(--surface-2)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5"/><path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5"/></svg>
+      </div>
+      <div class="item-body">
+        <div class="item-title">${esc(l.title)}</div>
+        <div class="item-sub" style="word-break:break-all;">${esc(l.url)}</div>
+        ${l.notes ? `<div class="item-sub">${esc(l.notes)}</div>` : ''}
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+          <button class="btn btn-ghost" style="padding:6px 12px;font-size:12px;" onclick='copyQuickLink(${JSON.stringify(l.url)})'>Copy Link</button>
+          ${admin ? `
+            <button class="btn btn-ghost" style="padding:6px 12px;font-size:12px;" onclick="openEditQuickLink(${l.id})">Edit</button>
+            <button class="btn btn-danger" style="padding:6px 12px;font-size:12px;" onclick="confirmDeleteQuickLink(${l.id})">Delete</button>
+          ` : ''}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function copyQuickLink(url) {
+  try {
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(url);
+      showToast('Link copied');
+    } else {
+      showToast('Copy not supported on this device');
+    }
+  } catch (e) {
+    showToast('Failed to copy link');
+  }
+}
+
+function openAddQuickLink() {
+  if (!isAdmin()) { showPermissionDenied('Only admins can manage Quick Links.'); return; }
+  _editingQuickLinkId = null;
+  document.getElementById('qlModalTitle').textContent = 'Add Quick Link';
+  document.getElementById('ql_title').value = '';
+  document.getElementById('ql_url').value   = '';
+  document.getElementById('ql_notes').value = '';
+  openModal('quickLinkFormModal');
+}
+
+function openEditQuickLink(id) {
+  if (!isAdmin()) { showPermissionDenied('Only admins can manage Quick Links.'); return; }
+  const link = _quickLinks.find(l => l.id === id);
+  if (!link) return;
+  _editingQuickLinkId = id;
+  document.getElementById('qlModalTitle').textContent = 'Edit Quick Link';
+  document.getElementById('ql_title').value = link.title || '';
+  document.getElementById('ql_url').value   = link.url || '';
+  document.getElementById('ql_notes').value = link.notes || '';
+  openModal('quickLinkFormModal');
+}
+
+async function saveQuickLink() {
+  if (!isAdmin()) { showPermissionDenied('Only admins can manage Quick Links.'); return; }
+  const title = document.getElementById('ql_title').value.trim();
+  const url   = document.getElementById('ql_url').value.trim();
+  const notes = document.getElementById('ql_notes').value.trim();
+  if (!title || !url) { showToast('Title and URL are required'); return; }
+
+  const btn = document.getElementById('qlSaveBtn');
+  if (btn) { btn.disabled = true; btn.classList.add('loading'); }
+  try {
+    if (_editingQuickLinkId) {
+      await API.updateQuickLink({ id: _editingQuickLinkId, title, url, notes });
+      showToast('Quick link updated');
+    } else {
+      await API.addQuickLink({ title, url, notes });
+      showToast('Quick link added');
+    }
+    closeModal('quickLinkFormModal');
+    loadQuickLinks();
+  } catch (e) {
+    if (e.status === 403) { showPermissionDenied('Only admins can manage Quick Links.'); return; }
+    showToast(e.body?.error || 'Failed to save quick link');
+  } finally {
+    if (btn) { btn.disabled = false; btn.classList.remove('loading'); }
+  }
+}
+
+function confirmDeleteQuickLink(id) {
+  if (!isAdmin()) { showPermissionDenied('Only admins can manage Quick Links.'); return; }
+  const link = _quickLinks.find(l => l.id === id);
+  if (!link) return;
+  showConfirm(
+    'Delete quick link?',
+    `"${link.title}" will be permanently removed.`,
+    async () => {
+      try {
+        await API.deleteQuickLink(id);
+        showToast('Quick link deleted');
+        loadQuickLinks();
+      } catch (e) {
+        if (e.status === 403) { showPermissionDenied('Only admins can manage Quick Links.'); return; }
+        showToast('Failed to delete quick link');
+      }
+    }
+  );
+}
+
 // Loads and renders the "Files" section inside a Record Detail modal as
 // full clickable rows (icon + name + size, chevron to hint it opens the
 // File Detail modal) — matches the File Manager's row style instead of
@@ -3710,6 +3907,12 @@ function openEditRecordFromDetail() {
       document.getElementById('r_install_payment_amount').value = r.payment_amount || '';
       document.getElementById('r_install_note').value = r.query_note || '';
     }
+
+    // Files group only exists for support/renewal/install (see
+    // onServiceSelect() above) — system change never shows it.
+    if (type === 'support' || type === 'renewal' || type === 'install') {
+      loadExistingRecordFiles(r.id);
+    }
   });
 
   closeModal('recordDetailModal');
@@ -3909,7 +4112,7 @@ const PERMISSION_GROUPS = [
   { title: 'Follow-ups', keys: ['can_add_followup', 'can_edit_followup', 'can_delete_followup', 'can_update_followup_status'] },
   { title: 'Messaging',  keys: ['can_send_reminder', 'access_quick_message'] },
   { title: 'Phone Number Visibility', keys: ['view_phone_clients', 'view_phone_renewals', 'view_phone_followups'] },
-  { title: 'Screen Access', keys: ['access_renewals', 'access_inactive_clients', 'access_add_transaction', 'access_transaction_history', 'access_pending_records', 'access_file_manager'] },
+  { title: 'Screen Access', keys: ['access_renewals', 'access_inactive_clients', 'access_add_transaction', 'access_transaction_history', 'access_pending_records', 'access_file_manager', 'access_quick_links'] },
   { title: 'View Access',   keys: ['view_clients', 'view_records', 'view_followups'] },
 ];
 // Logs isn't in any group above — it's hard admin-only (see api/logs.php),
@@ -3926,6 +4129,7 @@ const PERMISSION_LABELS = {
   access_renewals: 'Upcoming Renewals', access_inactive_clients: 'Inactive Clients',
   access_add_transaction: 'Add Transaction', access_transaction_history: 'Transaction History',
   access_pending_records: 'Pending Records', access_file_manager: 'File Manager screen',
+  access_quick_links: 'Quick Links screen',
   view_clients: 'View Clients screen', view_records: 'View Records screen',
   view_followups: 'View Follow-ups screen',
 };
@@ -4146,6 +4350,31 @@ async function saveUserPermissions() {
   } finally {
     btn.disabled = false;
   }
+}
+
+// Deletes the account currently open in the permissions editor. Lives in
+// the editor's own Danger Zone (bottom of the modal, below every toggle)
+// rather than the Set User list, so it's a deliberate second step, not a
+// stray tap on the user list row. Server enforces admin-only and blocks
+// deleting your own account, same as everywhere else in Set User.
+function confirmDeleteUserInEditor() {
+  if (!_editingUserUid) return;
+  const user = _setUserUsers.find(u => u.uid === _editingUserUid);
+  const name = user ? user.username : 'this user';
+  showConfirm(
+    'Delete user?',
+    `${name}'s account will be permanently deleted. This can't be undone.`,
+    async () => {
+      try {
+        await API.deleteUser({ uid: _editingUserUid });
+        showToast('User deleted');
+        closeModal('userPermissionsModal');
+        loadSetUserList();
+      } catch (e) {
+        showToast((e.body && e.body.error) || 'Failed to delete user');
+      }
+    }
+  );
 }
 
 /* ========================

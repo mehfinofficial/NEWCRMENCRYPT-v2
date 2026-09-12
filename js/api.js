@@ -109,11 +109,18 @@ const API = {
   async setUserPermissions(data) { return this.post('users.php', { action: 'set_permissions', ...data }); },
   async setUserActive(data)      { return this.post('users.php', { action: 'set_active', ...data }); },
   async setUserLoginHours(data)  { return this.post('users.php', { action: 'set_login_hours', ...data }); },
+  async deleteUser(data)         { return this.post('users.php', { action: 'delete', ...data }); },
 
   // ARCHIVES (Archives FAB — admin only)
   async getArchives()          { return this.get('archive.php'); },
   async restoreArchived(data)  { return this.post('archive.php', { action: 'restore', ...data }); },
   async purgeArchived(data)    { return this.post('archive.php', { action: 'purge', ...data }); },
+
+  // QUICK LINKS (view gated by access_quick_links; add/edit/delete admin-only server-side)
+  async getQuickLinks()       { return this.get('quicklinks.php'); },
+  async addQuickLink(data)    { return this.post('quicklinks.php', { action: 'add', ...data }); },
+  async updateQuickLink(data) { return this.post('quicklinks.php', { action: 'update', ...data }); },
+  async deleteQuickLink(id)   { return this.post('quicklinks.php', { action: 'delete', id }); },
 
   // SYNC
   async checkSync(since = 0) { return this.get('sync.php', { since }); },
@@ -123,6 +130,7 @@ const API = {
   async getFilesForRecord(recordId)   { return this.get('files.php', { record_id: recordId }); },
   async getFileInfo(id)               { return this.get('files.php', { info: id }); },
   async generateFileLink(id)          { return this.post('files.php', { action: 'generate_link', id }); },
+  async deleteFile(id)                { return this.post('files.php', { action: 'delete', id }); },
   // Multipart upload — bypasses the JSON post() helper since a file can't
   // be JSON-encoded. Same base URL / credentials behavior as the rest of API.
   async uploadFile(file, { recordId, account } = {}) {

@@ -206,6 +206,32 @@ if ($method === 'POST') {
         jsonOut(['success' => true, 'token' => $token, 'url' => $url, 'expires_at' => $expires]);
     }
 
+    // Remove a single file attached to a record (e.g. from the Edit Record
+    // form, without deleting the whole record). This is a hard delete —
+    // disk + row — same as purgeRecordFiles(), since individual files have
+    // no restore/Archives entry of their own (only whole records do).
+    // Gated by can_edit_record: removing a file from a record is an edit
+    // to that record, same permission that lets you change its other
+    // fields.
+    if ($action === 'delete') {
+        requirePermission($pdo, 'can_edit_record');
+
+        $id = (int)($body['id'] ?? 0);
+        if (!$id) jsonOut(['success' => false, 'error' => 'Invalid file ID.'], 400);
+
+        $stmt = $pdo->prepare("SELECT * FROM files WHERE id = ?");
+        $stmt->execute([$id]);
+        $file = $stmt->fetch();
+        if (!$file) jsonOut(['success' => false, 'error' => 'File not found.'], 404);
+
+        $path = $uploadDir . '/' . $file['stored_name'];
+        if (is_file($path)) { @unlink($path); }
+        $pdo->prepare("DELETE FROM files WHERE id = ?")->execute([$id]);
+
+        logAction($pdo, "File removed: {$file['original_name']}" . ($file['account'] ? " for {$file['account']}" : ''));
+        jsonOut(['success' => true]);
+    }
+
     jsonOut(['error' => 'Unknown action'], 400);
 }
 

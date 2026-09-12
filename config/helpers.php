@@ -119,7 +119,7 @@ const ALL_PERMISSION_KEYS = [
     'view_phone_clients', 'view_phone_renewals', 'view_phone_followups',
     'access_renewals', 'access_inactive_clients', 'access_add_transaction',
     'access_transaction_history', 'access_pending_records',
-    'access_quick_message', 'access_file_manager',
+    'access_quick_message', 'access_file_manager', 'access_quick_links',
     'view_clients', 'view_records', 'view_followups',
 ];
 // view_logs is deliberately NOT in this list — Logs is hard-gated to the
@@ -147,6 +147,9 @@ function getRolePermissionDefaults(string $role): array {
             'can_send_reminder'          => true,
             'access_quick_message'       => true,
             'access_file_manager'        => true,
+            // Quick Links (tool links pasted by admin) default ON for
+            // Support — they're the ones day-to-day needing those tools.
+            'access_quick_links'         => true,
         ]);
     }
 
@@ -166,6 +169,9 @@ function getRolePermissionDefaults(string $role): array {
             'can_send_reminder'          => true,
             'access_quick_message'       => true,
             'access_file_manager'        => true,
+            // Quick Links default OFF for Onsite — admin can flip this on
+            // per-user from Set User if a particular onsite tech needs it.
+            'access_quick_links'         => false,
         ]);
     }
 
@@ -276,7 +282,16 @@ function enforceAccountAccess(PDO $pdo): void {
     $stmt = $pdo->prepare("SELECT role, active, login_hours_enabled, login_start, login_end FROM users WHERE uid = ? LIMIT 1");
     $stmt->execute([$uid]);
     $row = $stmt->fetch();
-    if (!$row) return;
+    // No row at all means the account was deleted entirely — treat that
+    // the same as a disabled account and force the session out, instead
+    // of silently letting an already-logged-in session for a deleted
+    // user keep working until it naturally expires.
+    if (!$row) {
+        session_unset();
+        session_destroy();
+        setcookie('crm_remember', '', time() - 3600, '/', '', false, true);
+        jsonOut(['error' => 'Your account no longer exists. Contact your admin.', 'redirect' => 'login.html', 'account_blocked' => true], 401);
+    }
 
     $reason = null;
     if ((int)$row['active'] === 0) {

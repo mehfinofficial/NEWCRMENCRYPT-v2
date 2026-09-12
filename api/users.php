@@ -175,6 +175,27 @@ if ($method === 'POST') {
         jsonOut(['success' => true, 'permissions' => array_merge(array_fill_keys(ALL_PERMISSION_KEYS, true), $updated)]);
     }
 
+    // ── DELETE A USER ────────────────────────────────────────────────
+    if ($action === 'delete') {
+        $uid = (int)($body['uid'] ?? 0);
+        if (!$uid) jsonOut(['success' => false, 'error' => 'Invalid uid.'], 400);
+
+        $stmt = $pdo->prepare("SELECT username FROM users WHERE uid = ? LIMIT 1");
+        $stmt->execute([$uid]);
+        $target = $stmt->fetch();
+        if (!$target) jsonOut(['success' => false, 'error' => 'User not found.'], 404);
+
+        // An admin can't delete their own account out from under themselves
+        // mid-session — same guard as set_active's self-disable check.
+        if ($uid === (int)($_SESSION['userid'] ?? 0)) {
+            jsonOut(['success' => false, 'error' => "You can't delete your own account."], 400);
+        }
+
+        $pdo->prepare("DELETE FROM users WHERE uid = ?")->execute([$uid]);
+        logAction($pdo, "Staff account deleted: {$target['username']} (#{$uid})");
+        jsonOut(['success' => true]);
+    }
+
     jsonOut(['error' => 'Unknown action'], 400);
 }
 
