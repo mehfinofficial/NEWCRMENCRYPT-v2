@@ -269,6 +269,9 @@ body.no-scroll { overflow: hidden; height: 100dvh; }
   transition: var(--transition);
   color: #fff;
 }
+
+@media (min-width: 768px) {.nav-fab { margin-top: -5px; }}
+
 .nav-fab svg { stroke: #fff; transition: transform .25s cubic-bezier(.4,0,.2,1); }
 .nav-fab-item:active .nav-fab { transform: scale(.92); }
 .nav-fab.is-open svg { transform: rotate(45deg); }

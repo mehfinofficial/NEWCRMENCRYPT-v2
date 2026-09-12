@@ -3958,6 +3958,20 @@ function showLoginScreen() {
   if (topBar) topBar.style.display = 'none';
   if (mainContent) mainContent.style.display = 'none';
   if (bottomNav) bottomNav.style.display = 'none';
+
+  // Prefill username/password if they were saved from a previous
+  // "Keep me logged in" login. Only fills the fields — actually logging
+  // in still requires pressing Sign In (or Enter).
+  const savedUsername = localStorage.getItem('crm_saved_username');
+  const savedPassword = localStorage.getItem('crm_saved_password');
+  if (savedUsername !== null && savedPassword !== null) {
+    const uField = document.getElementById('loginUsername');
+    const pField = document.getElementById('loginPassword');
+    const rBox   = document.getElementById('loginRemember');
+    if (uField) uField.value = savedUsername;
+    if (pField) pField.value = savedPassword;
+    if (rBox)   rBox.checked = true;
+  }
 }
 
 function hideLoginScreen() {
@@ -4028,6 +4042,16 @@ async function doLogin() {
     const data = await res.json();
 
     if (data.success) {
+      // Save (or clear) the credentials for next time, based on the
+      // checkbox — separate from the server-side "remember" flag, which
+      // controls how long the session/cookie itself stays valid.
+      if (remember) {
+        localStorage.setItem('crm_saved_username', username);
+        localStorage.setItem('crm_saved_password', password);
+      } else {
+        localStorage.removeItem('crm_saved_username');
+        localStorage.removeItem('crm_saved_password');
+      }
       window.location.reload();
     } else {
       loginShowError(data.error || 'Invalid username or password.');
